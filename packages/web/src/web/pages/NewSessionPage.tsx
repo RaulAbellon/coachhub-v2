@@ -1,0 +1,367 @@
+import { useState, useRef } from "react";
+import { useLocation } from "wouter";
+import { ArrowLeft, Upload, FileText, X } from "lucide-react";
+import { useAuth } from "../context/AuthContext";
+
+const SESSION_TYPES = [
+  { value: "ataque",      label: "Ataque",               color: "#FF6B35" },
+  { value: "defensa",     label: "Defensa",               color: "#58A6FF" },
+  { value: "transicion",  label: "Transición",            color: "#3FB950" },
+  { value: "preparacion", label: "Preparación de partido", color: "#BC8CFF" },
+];
+
+export default function NewSessionPage() {
+  const [, navigate] = useLocation();
+  const { token } = useAuth();
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const physicalFileInputRef = useRef<HTMLInputElement>(null);
+
+  // Preselecciona el equipo si venimos de /sessions/new?teamId=X (ej. desde la vista de un equipo)
+  const preselectedTeamId = (() => {
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get("teamId");
+    return v ? Number(v) : "";
+  })();
+
+  const [title, setTitle] = useState("");
+  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [teamId, setTeamId] = useState<number | "">(preselectedTeamId);
+  const [duration, setDuration] = useState(90);
+  const [objectives, setObjectives] = useState("");
+  const [notes, setNotes] = useState("");
+  const [sessionType, setSessionType] = useState("ataque");
+  const [pdfData, setPdfData] = useState<string>("");
+  const [pdfName, setPdfName] = useState<string>("");
+  const [physicalPdfData, setPhysicalPdfData] = useState<string>("");
+  const [physicalPdfName, setPhysicalPdfName] = useState<string>("");
+  const [teams, setTeams] = useState<{ id: number; name: string }[]>([]);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [teamsLoaded, setTeamsLoaded] = useState(false);
+
+  // Load teams once
+  if (!teamsLoaded) {
+    setTeamsLoaded(true);
+    fetch("/api/teams", { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+      .then((r) => r.json())
+      .then((d) => {
+        const list = d.teams || [];
+        setTeams(list);
+        // Si solo hay un equipo y no venía preseleccionado por URL, lo seleccionamos automáticamente
+        if (!preselectedTeamId && list.length === 1) {
+          setTeamId(list[0].id);
+        }
+      });
+  }
+
+  const readPdfFile = (file: File, onDone: (name: string, data: string) => void) => {
+    if (file.type !== "application/pdf") {
+      setError("Solo se admiten archivos PDF");
+      return;
+    }
+    setError("");
+    const reader = new FileReader();
+    reader.onload = (ev) => onDone(file.name, ev.target?.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    readPdfFile(file, (name, data) => { setPdfName(name); setPdfData(data); });
+  };
+
+  const handlePhysicalFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    readPdfFile(file, (name, data) => { setPhysicalPdfName(name); setPhysicalPdfData(data); });
+  };
+
+  const removePdf = () => {
+    setPdfData(""); setPdfName("");
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  };
+
+  const removePhysicalPdf = () => {
+    setPhysicalPdfData(""); setPhysicalPdfName("");
+    if (physicalFileInputRef.current) physicalFileInputRef.current.value = "";
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    readPdfFile(file, (name, data) => { setPdfName(name); setPdfData(data); });
+  };
+
+  const handlePhysicalDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    const file = e.dataTransfer.files?.[0];
+    if (!file) return;
+    readPdfFile(file, (name, data) => { setPhysicalPdfName(name); setPhysicalPdfData(data); });
+  };
+
+  const handleSave = async () => {
+    if (!title.trim()) {
+      setError("El título es obligatorio");
+      return;
+    }
+    if (!teamId) {
+      setError("Debes seleccionar un equipo para la sesión");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      const res = await fetch("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+        body: JSON.stringify({
+          title: title.trim(),
+          date,
+          teamId: teamId || null,
+          duration,
+          objectives,
+          notes,
+          sessionType,
+          pdfData,
+          pdfName,
+          physicalPdfData,
+          physicalPdfName,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Error al guardar");
+      navigate(`/sessions/${data.session.id}`);
+    } catch (err: any) {
+      setError(err.message);
+      setSaving(false);
+    }
+  };
+
+  const inputStyle: React.CSSProperties = {
+    background: "#1C2333",
+    border: "1px solid #30363D",
+    color: "#E6EDF3",
+  };
+
+  return (
+    <div className="min-h-screen" style={{ background: "#0D1117", color: "#E6EDF3" }}>
+      {/* Header */}
+      <div className="flex items-center gap-4 px-6 py-4 border-b" style={{ borderColor: "#30363D" }}>
+        <button
+          onClick={() => navigate(-1)}
+          className="flex items-center gap-2 text-sm transition-opacity hover:opacity-70"
+          style={{ color: "#8B8B9B" }}
+        >
+          <ArrowLeft size={18} />
+          Volver
+        </button>
+        <h1 className="text-lg font-semibold tracking-wide uppercase">Nueva Sesión</h1>
+      </div>
+
+      <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
+        {/* Error */}
+        {error && (
+          <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "#2D1B1B", color: "#F85149", border: "1px solid #5A1D1D" }}>
+            {error}
+          </div>
+        )}
+
+        {/* Título */}
+        <div>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Título *</label>
+          <input
+            type="text"
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            placeholder="Ej: Sesión de defensa individual"
+            className="w-full px-4 py-3 rounded-lg text-sm outline-none transition-colors"
+            style={inputStyle}
+          />
+        </div>
+
+        {/* Tipo de sesión */}
+        <div>
+          <label className="block text-xs uppercase tracking-widest mb-3" style={{ color: "#8B8B9B" }}>Tipo de sesión</label>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {SESSION_TYPES.map((t) => {
+              const selected = sessionType === t.value;
+              return (
+                <button
+                  key={t.value}
+                  onClick={() => setSessionType(t.value)}
+                  style={{
+                    background: selected ? `${t.color}20` : "#1C2333",
+                    border: `2px solid ${selected ? t.color : "#30363D"}`,
+                    color: selected ? t.color : "#8B8B9B",
+                    borderRadius: 10,
+                    padding: "12px 16px",
+                    fontSize: 13,
+                    fontWeight: selected ? 700 : 500,
+                    cursor: "pointer",
+                    textAlign: "left",
+                    transition: "all 0.15s",
+                    letterSpacing: "0.01em",
+                  }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ width: 8, height: 8, borderRadius: "50%", background: t.color, flexShrink: 0, display: "inline-block" }} />
+                    {t.label}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Fecha + Duración */}
+        <div className="grid grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Fecha</label>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className="w-full px-4 py-3 rounded-lg text-sm outline-none"
+              style={{ ...inputStyle, colorScheme: "dark" }}
+            />
+          </div>
+          <div>
+            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Duración (min)</label>
+            <input
+              type="number"
+              value={duration}
+              onChange={(e) => setDuration(Number(e.target.value))}
+              min={10} max={240}
+              className="w-full px-4 py-3 rounded-lg text-sm outline-none"
+              style={inputStyle}
+            />
+          </div>
+        </div>
+
+        {/* Equipo */}
+        {teamsLoaded && teams.length === 0 ? (
+          <div className="px-4 py-4 rounded-lg text-sm" style={{ background: "#2D1B1B", color: "#F0B8B8", border: "1px solid #5A1D1D" }}>
+            Todavía no tienes ningún equipo. <button onClick={() => navigate("/teams")} style={{ color: "#FF6B35", textDecoration: "underline", fontWeight: 600 }}>Crea uno primero</button> para poder registrar sesiones.
+          </div>
+        ) : (
+          <div>
+            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Equipo *</label>
+            <select
+              value={teamId}
+              onChange={(e) => setTeamId(e.target.value ? Number(e.target.value) : "")}
+              className="w-full px-4 py-3 rounded-lg text-sm outline-none"
+              style={inputStyle}
+            >
+              <option value="">Selecciona un equipo</option>
+              {teams.map((t) => (
+                <option key={t.id} value={t.id}>{t.name}</option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {/* Objetivos */}
+        <div>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Objetivos</label>
+          <textarea
+            value={objectives}
+            onChange={(e) => setObjectives(e.target.value)}
+            placeholder="Objetivos de la sesión..."
+            rows={3}
+            className="w-full px-4 py-3 rounded-lg text-sm outline-none resize-none"
+            style={inputStyle}
+          />
+        </div>
+
+        {/* Notas */}
+        <div>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Notas</label>
+          <textarea
+            value={notes}
+            onChange={(e) => setNotes(e.target.value)}
+            placeholder="Notas adicionales..."
+            rows={3}
+            className="w-full px-4 py-3 rounded-lg text-sm outline-none resize-none"
+            style={inputStyle}
+          />
+        </div>
+
+        {/* PDF Pista */}
+        <div>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>
+            PDF Sesión de Pista
+          </label>
+          {pdfData ? (
+            <div className="flex items-center justify-between px-4 py-3 rounded-lg" style={{ background: "#1C2333", border: "1px solid #30363D" }}>
+              <div className="flex items-center gap-3">
+                <FileText size={20} style={{ color: "#FF6B35" }} />
+                <span className="text-sm truncate max-w-xs">{pdfName}</span>
+              </div>
+              <button onClick={removePdf} className="transition-opacity hover:opacity-70" style={{ color: "#8B8B9B" }}>
+                <X size={18} />
+              </button>
+            </div>
+          ) : (
+            <div
+              onDrop={handleDrop}
+              onDragOver={(e) => e.preventDefault()}
+              onClick={() => fileInputRef.current?.click()}
+              className="flex flex-col items-center justify-center gap-3 px-6 py-10 rounded-lg cursor-pointer"
+              style={{ background: "#1C2333", border: "2px dashed #30363D" }}
+            >
+              <Upload size={28} style={{ color: "#8B8B9B" }} />
+              <p className="text-sm" style={{ color: "#8B8B9B" }}>
+                Arrastra un PDF aquí o <span style={{ color: "#FF6B35" }}>haz clic para seleccionar</span>
+              </p>
+            </div>
+          )}
+          <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handleFileSelect} className="hidden" />
+        </div>
+
+        {/* PDF Físico */}
+        <div>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>
+            PDF Preparación Física <span style={{ color: "#4A4A5A", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(opcional)</span>
+          </label>
+          {physicalPdfData ? (
+            <div className="flex items-center justify-between px-4 py-3 rounded-lg" style={{ background: "#1C2333", border: "1px solid #30363D" }}>
+              <div className="flex items-center gap-3">
+                <FileText size={20} style={{ color: "#58A6FF" }} />
+                <span className="text-sm truncate max-w-xs">{physicalPdfName}</span>
+              </div>
+              <button onClick={removePhysicalPdf} className="transition-opacity hover:opacity-70" style={{ color: "#8B8B9B" }}>
+                <X size={18} />
+              </button>
+            </div>
+          ) : (
+            <div
+              onDrop={handlePhysicalDrop}
+              onDragOver={(e) => e.preventDefault()}
+              onClick={() => physicalFileInputRef.current?.click()}
+              className="flex flex-col items-center justify-center gap-3 px-6 py-8 rounded-lg cursor-pointer"
+              style={{ background: "#1C2333", border: "2px dashed #30363D" }}
+            >
+              <Upload size={24} style={{ color: "#8B8B9B" }} />
+              <p className="text-sm" style={{ color: "#8B8B9B" }}>
+                Arrastra el PDF de físico aquí o <span style={{ color: "#58A6FF" }}>haz clic para seleccionar</span>
+              </p>
+            </div>
+          )}
+          <input ref={physicalFileInputRef} type="file" accept="application/pdf" onChange={handlePhysicalFileSelect} className="hidden" />
+        </div>
+
+        {/* Guardar */}
+        <button
+          onClick={handleSave}
+          disabled={saving || !title.trim() || !teamId}
+          className="w-full py-4 rounded-lg font-semibold text-sm uppercase tracking-widest transition-opacity"
+          style={{ background: "#FF6B35", color: "#0D1117", opacity: (saving || !title.trim() || !teamId) ? 0.5 : 1 }}
+        >
+          {saving ? "Guardando..." : "Guardar Sesión"}
+        </button>
+      </div>
+    </div>
+  );
+}

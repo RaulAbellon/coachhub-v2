@@ -2,8 +2,8 @@
 // Ver F-0006 (límite de tamaño para campos base64) y F-0016 (JSON body inválido)
 // en ai_workflow/01_AUDIT_REPORT.yaml.
 
-/** ~1MB decodificado ≈ 1.37MB en base64. Suficiente para un PDF/foto razonable. */
-export const MAX_BASE64_FIELD_BYTES = 1_400_000;
+/** ~3MB decodificado ≈ 4MB en base64. Holgado para PDFs de Notability con dibujos. */
+export const MAX_BASE64_FIELD_BYTES = 4_000_000;
 
 export class PayloadTooLargeError extends Error {
   constructor(public field: string) {

@@ -23,8 +23,14 @@ export default function NewSessionPage() {
     return v ? Number(v) : "";
   })();
 
+  const preselectedDate = (() => {
+    const params = new URLSearchParams(window.location.search);
+    const v = params.get("date");
+    return v && /^\d{4}-\d{2}-\d{2}$/.test(v) ? v : new Date().toISOString().split("T")[0];
+  })();
+
   const [title, setTitle] = useState("");
-  const [date, setDate] = useState(new Date().toISOString().split("T")[0]);
+  const [date, setDate] = useState(preselectedDate);
   const [teamId, setTeamId] = useState<number | "">(preselectedTeamId);
   const [duration, setDuration] = useState(90);
   const [objectives, setObjectives] = useState("");

@@ -32,7 +32,7 @@ export default function TeamSessionsPage() {
   const params = useParams<{ teamId: string }>();
   const teamId = Number(params.teamId);
   const [, navigate] = useLocation();
-  const { token } = useAuth();
+  const { user, token } = useAuth();
   const [openFolders, setOpenFolders] = useState<Record<string, boolean>>({
     ataque: true, defensa: false, transicion: false, preparacion: false,
   });
@@ -46,7 +46,7 @@ export default function TeamSessionsPage() {
       });
       return res.json();
     },
-    enabled: !!token,
+    enabled: !!user,
   });
 
   // Fetch all sessions for this team (no month filter)
@@ -58,7 +58,7 @@ export default function TeamSessionsPage() {
       });
       return res.json() as Promise<{ sessions: Session[] }>;
     },
-    enabled: !!token && !!teamId,
+    enabled: !!user && !!teamId,
   });
 
   const sessions: Session[] = (data?.sessions ?? []).sort(

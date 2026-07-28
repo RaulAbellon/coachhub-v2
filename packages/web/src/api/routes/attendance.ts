@@ -58,6 +58,7 @@ async function getAttendanceWithPlayers(sessionId: number, sessionDate?: string)
       playerName: player?.name ?? null,
       playerNumber: player?.number ?? null,
       playerPosition: player?.positions ?? null,
+      isAdditional: !!player?.isAdditional,
       activeInjury: injury ? {
         id: injury.id,
         type: injury.type,
@@ -140,7 +141,10 @@ export const attendanceRoutes = new Hono()
       .map(p => ({
         sessionId,
         playerId: p.id,
-        status: (injuredPlayerIds.has(p.id) ? "injured" : "present") as "present" | "injured",
+        // Lesionado -> injured; jugador adicional -> absent por defecto; resto -> present
+        status: (injuredPlayerIds.has(p.id)
+          ? "injured"
+          : p.isAdditional ? "absent" : "present") as "present" | "injured" | "absent",
       }));
 
     if (toInsert.length > 0) {

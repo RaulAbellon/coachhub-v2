@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { teams } from "./routes/teams";
 import { sessions } from "./routes/sessions";
+import { matches } from "./routes/matches";
 import { auth } from "./routes/auth";
 import { players as playersRoutes, incidents as incidentsRoutes, injuries as injuriesRoutes } from "./routes/players";
 import { attendanceRoutes } from "./routes/attendance";
@@ -35,6 +36,7 @@ const app = new Hono()
   .route("/auth", auth)
   .route("/teams", teams)
   .route("/sessions", sessions)
+  .route("/matches", matches)
   .route("/players", playersRoutes)
   .route("/incidents", incidentsRoutes)
   .route("/injuries", injuriesRoutes)

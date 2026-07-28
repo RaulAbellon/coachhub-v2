@@ -63,7 +63,7 @@ export default function ProfilePage() {
       const res = await authFetch("/api/teams", {}, token);
       return res.json();
     },
-    enabled: !!token,
+    enabled: !!user,
   });
 
   const teams: Team[] = data?.teams ?? [];

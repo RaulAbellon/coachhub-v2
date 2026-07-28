@@ -51,6 +51,18 @@ interface Team {
   category: string;
   role?: string;
 }
+interface Match {
+  id: number;
+  teamId: number;
+  date: string;
+  time: string;
+  meetingTime: string;
+  opponent: string;
+  homeAway: string;
+  venue: string;
+  goalsFor: number | null;
+  goalsAgainst: number | null;
+}
 
 export default function CalendarPage() {
   const today = new Date();
@@ -58,7 +70,7 @@ export default function CalendarPage() {
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
   const [, navigate] = useLocation();
-  const { token } = useAuth();
+  const { user, token } = useAuth();
 
   const year  = currentDate.getFullYear();
   const month = currentDate.getMonth();
@@ -72,11 +84,23 @@ export default function CalendarPage() {
       });
       return res.json() as Promise<{ sessions: Session[]; teams: Team[] }>;
     },
-    enabled: !!token,
+    enabled: !!user,
+  });
+
+  const { data: matchesData } = useQuery({
+    queryKey: ["matches-all", monthStr],
+    queryFn: async () => {
+      const res = await fetch(`/api/matches/all-teams?month=${monthStr}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      return res.json() as Promise<{ matches: Match[] }>;
+    },
+    enabled: !!user,
   });
 
   const sessions: Session[] = data?.sessions ?? [];
   const teams: Team[]       = data?.teams    ?? [];
+  const matches: Match[]    = matchesData?.matches ?? [];
   const teamMap = Object.fromEntries(teams.map(t => [t.id, t]));
   // Can create sessions if user is owner or editor in at least one team
   const canEdit = teams.some(t => t.role === "owner" || t.role === "editor");
@@ -85,6 +109,12 @@ export default function CalendarPage() {
   sessions.forEach(s => {
     if (!sessionMap[s.date]) sessionMap[s.date] = [];
     sessionMap[s.date].push(s);
+  });
+
+  const matchMap: Record<string, Match[]> = {};
+  matches.forEach(m => {
+    if (!matchMap[m.date]) matchMap[m.date] = [];
+    matchMap[m.date].push(m);
   });
 
   const daysInMonth = getDaysInMonth(year, month);
@@ -99,7 +129,49 @@ export default function CalendarPage() {
   };
 
   const selectedSessions = selectedDay ? (sessionMap[selectedDay] ?? []) : [];
+  const selectedMatches  = selectedDay ? (matchMap[selectedDay] ?? []) : [];
   const DAYS = isMobile ? DAYS_MOBILE : DAYS_DESKTOP;
+
+  /* ─── Match card (used in sheet + desktop panel) ─── */
+  const MatchCard = ({ m, compact }: { m: Match; compact?: boolean }) => {
+    const team = teamMap[m.teamId];
+    const teamColor = team?.color || "#FF6B35";
+    const homeColor = m.homeAway === "home" ? "#3FB950" : "#58A6FF";
+    const played = m.goalsFor != null && m.goalsAgainst != null;
+    const win = played && m.goalsFor! > m.goalsAgainst!;
+    const draw = played && m.goalsFor === m.goalsAgainst;
+    return (
+      <div
+        onClick={() => navigate(`/matches/${m.id}`)}
+        style={{
+          padding: compact ? "11px 13px" : "13px 15px",
+          borderRadius: compact ? 8 : 12,
+          background: "var(--bg-secondary)",
+          border: `1px solid ${hexToRgba(homeColor, 0.3)}`,
+          borderLeft: `3px solid ${homeColor}`,
+          cursor: "pointer",
+        }}
+      >
+        <div style={{ display: "flex", gap: 6, marginBottom: 7, flexWrap: "wrap", alignItems: "center" }}>
+          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 12, background: "rgba(245,166,35,0.18)", border: "1px solid rgba(245,166,35,0.4)", color: "var(--accent)" }}>PARTIDO</span>
+          <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 12, background: hexToRgba(teamColor, 0.2), border: `1px solid ${hexToRgba(teamColor, 0.4)}`, color: teamColor }}>{team?.name ?? "Equipo"}</span>
+          <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 12, background: `${homeColor}20`, color: homeColor }}>{m.homeAway === "home" ? "Local" : "Visitante"}</span>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div style={{ fontSize: compact ? 13 : 14, fontWeight: 600, color: "var(--text-primary)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {m.opponent || "Rival por definir"}
+          </div>
+          {played && (
+            <span style={{ fontSize: 13, fontWeight: 800, padding: "2px 9px", borderRadius: 8, flexShrink: 0, background: draw ? "rgba(139,139,155,0.18)" : win ? "rgba(63,185,80,0.16)" : "rgba(255,69,58,0.16)", color: draw ? "#8B8B9B" : win ? "#3FB950" : "#FF453A" }}>{m.goalsFor}-{m.goalsAgainst}</span>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 10, fontSize: 11, color: "var(--text-secondary)", marginTop: 5, flexWrap: "wrap" }}>
+          {m.time && <span>🕐 {m.time}h</span>}
+          {m.venue && <span>📍 {m.venue}</span>}
+        </div>
+      </div>
+    );
+  };
 
   /* ─── Mobile bottom sheet ─── */
   const DaySheet = () => {
@@ -143,6 +215,11 @@ export default function CalendarPage() {
           </div>
 
           <div style={{ padding: "0 16px" }}>
+            {selectedMatches.length > 0 && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: selectedSessions.length > 0 ? 12 : 0 }}>
+                {selectedMatches.map(m => <MatchCard key={m.id} m={m} />)}
+              </div>
+            )}
             {selectedSessions.length > 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
                 {selectedSessions.map(s => {
@@ -184,28 +261,28 @@ export default function CalendarPage() {
                   );
                 })}
               </div>
-            ) : (
+            ) : selectedMatches.length === 0 ? (
               <div style={{ textAlign: "center", padding: "16px 0 8px" }}>
                 <div style={{ marginBottom: 10, opacity: 0.35 }}><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="12" y2="15"/></svg></div>
                 <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 18, lineHeight: 1.5 }}>
-                  No hay sesiones este día.<br />¿Quieres crear una?
+                  Nada programado este día.
                 </p>
-                {canEdit && (
-                  <button
-                    className="btn-primary"
-                    style={{ fontSize: 13, padding: "8px 20px", width: "100%" }}
-                    onClick={() => navigate("/sessions/new")}
-                  >+ Nueva sesión</button>
-                )}
               </div>
-            )}
+            ) : null}
 
-            {selectedSessions.length > 0 && (
-              <button
-                className="btn-ghost"
-                style={{ marginTop: 12, width: "100%", fontSize: 13, padding: "8px 0" }}
-                onClick={() => navigate("/sessions/new")}
-              >+ Añadir sesión este día</button>
+            {canEdit && (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+                <button
+                  className="btn-ghost"
+                  style={{ width: "100%", fontSize: 13, padding: "9px 0" }}
+                  onClick={() => navigate(`/sessions/new?date=${selectedDay}`)}
+                >+ Añadir sesión</button>
+                <button
+                  className="btn-ghost"
+                  style={{ width: "100%", fontSize: 13, padding: "9px 0" }}
+                  onClick={() => navigate(`/matches/new?date=${selectedDay}`)}
+                >+ Añadir partido</button>
+              </div>
             )}
           </div>
         </div>
@@ -339,9 +416,12 @@ export default function CalendarPage() {
               const day      = i + 1;
               const dateStr  = `${year}-${String(month + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
               const daySessions = sessionMap[dateStr] ?? [];
+              const dayMatches  = matchMap[dateStr] ?? [];
               const isToday  = dateStr === todayStr;
               const isSelected = dateStr === selectedDay;
               const col      = (firstDay + i) % 7;
+              const isWeekend = col >= 5;
+              const baseBg = isSelected ? "rgba(245,166,35,0.08)" : isWeekend ? "rgba(88,166,255,0.045)" : "transparent";
 
               return (
                 <div
@@ -353,7 +433,7 @@ export default function CalendarPage() {
                     borderRight: col < 6 ? "1px solid var(--border)" : "none",
                     borderBottom: "1px solid var(--border)",
                     cursor: "pointer",
-                    background: isSelected ? "rgba(245,166,35,0.08)" : "transparent",
+                    background: baseBg,
                     transition: "background 0.15s",
                     outline: isSelected ? "1.5px solid var(--accent)" : "none",
                     outlineOffset: -1,
@@ -367,7 +447,7 @@ export default function CalendarPage() {
                   }}
                   onMouseLeave={e => {
                     if (!isSelected)
-                      (e.currentTarget as HTMLDivElement).style.background = "transparent";
+                      (e.currentTarget as HTMLDivElement).style.background = baseBg;
                   }}
                 >
                   {/* Day number */}
@@ -384,11 +464,18 @@ export default function CalendarPage() {
                     flexShrink: 0,
                   }}>{day}</div>
 
-                  {/* Session indicators */}
+                  {/* Session + match indicators */}
                   {isMobile ? (
-                    /* MOBILE: colored dots */
-                    daySessions.length > 0 && (
+                    /* MOBILE: colored dots (matches = square, sessions = circle) */
+                    (daySessions.length > 0 || dayMatches.length > 0) && (
                       <div style={{ display: "flex", gap: 3, justifyContent: "center", flexWrap: "wrap", maxWidth: "100%", paddingBottom: 2 }}>
+                        {dayMatches.slice(0, 2).map((m, idx) => (
+                          <div key={`m${idx}`} style={{
+                            width: 6, height: 6, borderRadius: 1.5,
+                            background: "var(--accent)",
+                            flexShrink: 0,
+                          }} />
+                        ))}
                         {daySessions.slice(0, 3).map((s, idx) => {
                           const teamColor = teamMap[s.teamId]?.color || "#FF6B35";
                           return (
@@ -410,7 +497,31 @@ export default function CalendarPage() {
                   ) : (
                     /* DESKTOP: text pills */
                     <>
-                      {daySessions.slice(0, 2).map((s, idx) => {
+                      {dayMatches.slice(0, 2).map((m, idx) => (
+                        <div key={`m${idx}`} style={{
+                          background: "rgba(245,166,35,0.18)",
+                          border: "1px solid rgba(245,166,35,0.45)",
+                          borderRadius: 4,
+                          padding: "2px 5px",
+                          fontSize: 10,
+                          color: "var(--accent)",
+                          fontWeight: 700,
+                          marginBottom: 2,
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          width: "100%",
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 3,
+                        }}>
+                          <span style={{ fontSize: 8 }}>🏐</span>
+                          {m.opponent || "Partido"}
+                        </div>
+                      ))}
+                      {(() => {
+                        const remaining = 2 - Math.min(dayMatches.length, 2);
+                        return daySessions.slice(0, remaining).map((s, idx) => {
                         const team      = teamMap[s.teamId];
                         const teamColor = team?.color || "#FF6B35";
                         return (
@@ -431,12 +542,17 @@ export default function CalendarPage() {
                             {team?.name ?? s.title}
                           </div>
                         );
-                      })}
-                      {daySessions.length > 2 && (
-                        <div style={{ fontSize: 10, color: "var(--text-secondary)", paddingLeft: 5 }}>
-                          +{daySessions.length - 2} más
-                        </div>
-                      )}
+                      });
+                      })()}
+                      {(() => {
+                        const shown = Math.min(dayMatches.length, 2) + Math.max(0, Math.min(daySessions.length, 2 - Math.min(dayMatches.length, 2)));
+                        const total = dayMatches.length + daySessions.length;
+                        return total > shown ? (
+                          <div style={{ fontSize: 10, color: "var(--text-secondary)", paddingLeft: 5 }}>
+                            +{total - shown} más
+                          </div>
+                        ) : null;
+                      })()}
                     </>
                   )}
                 </div>
@@ -454,8 +570,8 @@ export default function CalendarPage() {
                   <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1.3, textTransform: "capitalize" }}>
                     {formatDateES(selectedDay)}
                   </p>
-                  {selectedSessions.length === 0 && (
-                    <p style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 3 }}>Sin sesiones</p>
+                  {selectedSessions.length === 0 && selectedMatches.length === 0 && (
+                    <p style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 3 }}>Nada programado</p>
                   )}
                 </div>
                 <button
@@ -463,6 +579,12 @@ export default function CalendarPage() {
                   style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-secondary)", fontSize: 18, lineHeight: 1, padding: "0 0 0 8px", marginTop: -2 }}
                 >×</button>
               </div>
+
+              {selectedMatches.length > 0 && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10, marginBottom: selectedSessions.length > 0 ? 10 : 0 }}>
+                  {selectedMatches.map(m => <MatchCard key={m.id} m={m} compact />)}
+                </div>
+              )}
 
               {selectedSessions.length > 0 ? (
                 <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -505,28 +627,28 @@ export default function CalendarPage() {
                     );
                   })}
                 </div>
-              ) : (
+              ) : selectedMatches.length === 0 ? (
                 <div style={{ textAlign: "center", padding: "12px 0 4px" }}>
-                  <div style={{ marginBottom: 8, opacity: 0.4, display: "flex", justifyContent: "center" }}><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="12" y2="15"/></svg></div>
+                  <div style={{ marginBottom: 8, opacity: 0.4, display: "flex", justifyContent: "center" }}><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="15" x2="12" y2="15"/></svg></div>
                   <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 14, lineHeight: 1.5 }}>
-                    No hay sesiones este día.<br />¿Quieres crear una?
+                    Nada programado este día.
                   </p>
-                  {canEdit && (
-                    <button
-                      className="btn-primary"
-                      style={{ fontSize: 12, padding: "6px 14px", width: "100%" }}
-                      onClick={() => navigate("/sessions/new")}
-                    >+ Nueva sesión</button>
-                  )}
                 </div>
-              )}
+              ) : null}
 
-              {selectedSessions.length > 0 && (
-                <button
-                  className="btn-ghost"
-                  style={{ marginTop: 12, width: "100%", fontSize: 12, padding: "6px 0" }}
-                  onClick={() => navigate("/sessions/new")}
-                >+ Añadir sesión este día</button>
+              {canEdit && (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
+                  <button
+                    className="btn-ghost"
+                    style={{ width: "100%", fontSize: 12, padding: "7px 0" }}
+                    onClick={() => navigate(`/sessions/new?date=${selectedDay}`)}
+                  >+ Añadir sesión</button>
+                  <button
+                    className="btn-ghost"
+                    style={{ width: "100%", fontSize: 12, padding: "7px 0" }}
+                    onClick={() => navigate(`/matches/new?date=${selectedDay}`)}
+                  >+ Añadir partido</button>
+                </div>
               )}
             </div>
           </div>
@@ -535,6 +657,63 @@ export default function CalendarPage() {
 
       {/* ── MOBILE bottom sheet ── */}
       <DaySheet />
+
+      {/* ── MATCHES LIST THIS MONTH ── */}
+      {matches.length > 0 && (
+        <div style={{ marginTop: isMobile ? 24 : 32, padding: isMobile ? "0 8px" : 0 }}>
+          <p className="label-caps" style={{ marginBottom: 14, paddingLeft: isMobile ? 4 : 0 }}>
+            Partidos este mes · {matches.length}
+          </p>
+          <div style={{
+            display: "grid",
+            gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(260px, 1fr))",
+            gap: isMobile ? 8 : 10,
+          }}>
+            {matches.map(m => {
+              const team = teamMap[m.teamId];
+              const teamColor = team?.color || "#FF6B35";
+              const homeColor = m.homeAway === "home" ? "#3FB950" : "#58A6FF";
+              const played = m.goalsFor != null && m.goalsAgainst != null;
+              const win = played && m.goalsFor! > m.goalsAgainst!;
+              const draw = played && m.goalsFor === m.goalsAgainst;
+              return (
+                <div
+                  key={m.id}
+                  className="card card-hover"
+                  onClick={() => navigate(`/matches/${m.id}`)}
+                  style={{
+                    padding: isMobile ? "14px 16px" : "15px 18px",
+                    cursor: "pointer",
+                    borderLeft: `3px solid ${homeColor}`,
+                    borderRadius: isMobile ? 12 : 8,
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 6, marginBottom: 8, flexWrap: "wrap", alignItems: "center" }}>
+                    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 12, background: "rgba(245,166,35,0.18)", border: "1px solid rgba(245,166,35,0.4)", color: "var(--accent)" }}>PARTIDO</span>
+                    {team && (
+                      <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 12, background: hexToRgba(teamColor, 0.15), border: `1px solid ${hexToRgba(teamColor, 0.35)}`, color: teamColor }}>{team.name}</span>
+                    )}
+                    <span style={{ fontSize: 10, fontWeight: 600, padding: "2px 7px", borderRadius: 12, background: `${homeColor}20`, color: homeColor }}>{m.homeAway === "home" ? "Local" : "Visitante"}</span>
+                  </div>
+                  <div style={{ fontSize: 11, color: "var(--text-secondary)", marginBottom: 5 }}>
+                    {new Date(m.date + "T12:00:00").toLocaleDateString("es-ES", { weekday: "long", day: "numeric", month: "long" })}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{m.opponent || "Rival por definir"}</div>
+                    {played && (
+                      <span style={{ fontSize: 14, fontWeight: 800, padding: "2px 9px", borderRadius: 8, flexShrink: 0, background: draw ? "rgba(139,139,155,0.18)" : win ? "rgba(63,185,80,0.16)" : "rgba(255,69,58,0.16)", color: draw ? "#8B8B9B" : win ? "#3FB950" : "#FF453A" }}>{m.goalsFor}-{m.goalsAgainst}</span>
+                    )}
+                  </div>
+                  <div style={{ display: "flex", gap: 10, marginTop: 8, fontSize: 11, color: "var(--text-secondary)", flexWrap: "wrap" }}>
+                    {m.time && <span>{m.time}h</span>}
+                    {m.venue && <span>· {m.venue}</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       {/* ── SESSIONS LIST THIS MONTH ── */}
       {sessions.length > 0 && (
@@ -594,7 +773,7 @@ export default function CalendarPage() {
       )}
 
       {/* ── EMPTY STATE ── */}
-      {sessions.length === 0 && !selectedDay && (
+      {sessions.length === 0 && matches.length === 0 && !selectedDay && (
         <div style={{ marginTop: 60, textAlign: "center", color: "var(--text-secondary)" }}>
           <div style={{ marginBottom: 14, display: "flex", justifyContent: "center", opacity: 0.4 }}><svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="9" y1="7" x2="15" y2="7"/><line x1="9" y1="11" x2="15" y2="11"/><line x1="9" y1="15" x2="12" y2="15"/></svg></div>
           <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text-primary)" }}>Sin sesiones este mes</div>

@@ -629,6 +629,10 @@ export default function TeamsPage() {
                   style={{ flex: "1 1 auto", minWidth: 110, fontSize: 13, padding: "8px 12px", justifyContent: "center" }}>
                   Sesiones
                 </button>
+                <button className="btn-ghost" onClick={() => navigate(`/teams/${team.id}/matches`)}
+                  style={{ flex: "1 1 auto", minWidth: 110, fontSize: 13, padding: "8px 12px", justifyContent: "center" }}>
+                  Partidos
+                </button>
                 <button className="btn-ghost" onClick={() => navigate(`/teams/${team.id}/players`)}
                   style={{ flex: "1 1 auto", minWidth: 110, fontSize: 13, padding: "8px 12px", justifyContent: "center" }}>
                   {playerWord(team.gender, true, true)}

@@ -5,6 +5,8 @@ import { useAuth } from "../context/AuthContext";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { playerWord } from "../lib/gender";
 import { authFetch } from "../lib/authFetch";
+import { ADDITIONAL_COLOR, ADDITIONAL_DIM } from "../lib/additional";
+import { AdditionalBadge } from "../components/AdditionalBadge";
 
 const POSITIONS = [
   "Portera",
@@ -22,6 +24,7 @@ type Player = {
   name: string;
   number: number | null;
   positions: string; // JSON array string
+  isAdditional?: boolean;
   photoData: string | null;
   height: number | null;
   weight: number | null;
@@ -71,6 +74,7 @@ const inputStyle: React.CSSProperties = {
 function emptyPlayerForm() {
   return {
     name: "", number: "", positions: [] as string[],
+    isAdditional: false,
     birthDate: "",
     height: "", weight: "", wingspan: "",
     chronicDiseases: "", previousInjuries: "", allergies: "",
@@ -201,6 +205,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
       name: p.name,
       number: String(p.number ?? ""),
       positions: parsePositions(p.positions),
+      isAdditional: !!p.isAdditional,
       birthDate: p.birthDate ?? "",
       height: String(p.height ?? ""),
       weight: String(p.weight ?? ""),
@@ -235,6 +240,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
       name: form.name,
       number: form.number ? Number(form.number) : null,
       positions: JSON.stringify(form.positions),
+      isAdditional: form.isAdditional,
       height: form.height ? Number(form.height) : null,
       weight: form.weight ? Number(form.weight) : null,
       wingspan: form.wingspan ? Number(form.wingspan) : null,
@@ -315,6 +321,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
                       padding: isMobile ? "10px 12px" : "12px 16px", display: "flex", alignItems: "center", gap: isMobile ? 10 : 12,
                       cursor: "pointer", minWidth: 0,
                       border: selectedPlayer?.id === player.id ? "1px solid var(--accent)" : "1px solid var(--border)",
+                      borderLeft: player.isAdditional ? `3px solid ${ADDITIONAL_COLOR}` : undefined,
                       transition: "border-color 0.15s",
                     }}
                   >
@@ -341,7 +348,10 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
                     )}
 
                     <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontWeight: 600, fontSize: 14, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                        <span style={{ fontWeight: 600, fontSize: 14, color: "var(--text-primary)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{player.name}</span>
+                        {player.isAdditional && <AdditionalBadge />}
+                      </div>
                       {pos.length > 0 && (
                         <div style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {pos.join(" · ")}
@@ -400,7 +410,10 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
                   ) : "👤"}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontWeight: 700, fontSize: 15, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedPlayer.name}</div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
+                    <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedPlayer.name}</span>
+                    {selectedPlayer.isAdditional && <AdditionalBadge />}
+                  </div>
                   {selectedPlayer.number != null && (
                     <span style={{ fontSize: 12, color: "var(--accent)", marginRight: 8 }}>#{selectedPlayer.number}</span>
                   )}
@@ -510,6 +523,34 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
               </button>
             ))}
           </div>
+
+          {/* Jugador adicional (sube de categoría inferior) */}
+          <button
+            onClick={() => setForm(f => ({ ...f, isAdditional: !f.isAdditional }))}
+            style={{
+              display: "flex", alignItems: "center", gap: 10, marginTop: 16,
+              width: "100%", textAlign: "left", cursor: "pointer",
+              padding: "12px 14px", borderRadius: 12,
+              border: `1px solid ${form.isAdditional ? ADDITIONAL_COLOR : "var(--border)"}`,
+              background: form.isAdditional ? ADDITIONAL_DIM : "var(--bg-secondary)",
+              transition: "all 0.15s",
+            }}>
+            <span style={{
+              width: 20, height: 20, borderRadius: 6, flexShrink: 0,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              border: `2px solid ${form.isAdditional ? ADDITIONAL_COLOR : "var(--border)"}`,
+              background: form.isAdditional ? ADDITIONAL_COLOR : "transparent",
+              color: "#fff", fontSize: 13, fontWeight: 700,
+            }}>{form.isAdditional ? "✓" : ""}</span>
+            <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+              <span style={{ fontSize: 14, fontWeight: 600, color: form.isAdditional ? ADDITIONAL_COLOR : "var(--text-primary)" }}>
+                Jugador adicional
+              </span>
+              <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
+                Sube de categoría inferior. No se marca como convocado ni asistente por defecto.
+              </span>
+            </span>
+          </button>
 
           {/* Medidas */}
           <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 20, marginBottom: 0 }}>MEDIDAS</p>

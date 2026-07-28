@@ -85,6 +85,7 @@ export const players = sqliteTable("players", {
   name: text("name").notNull(),
   number: integer("number"),
   positions: text("positions").default(""), // JSON array: ["Portera","Extremo"]
+  isAdditional: integer("is_additional", { mode: "boolean" }).notNull().default(false), // jugador adicional (sube de categoría inferior): no convocado/no asistente por defecto
   photoData: text("photo_data").default(""), // base64
   // Ficha técnica
   height: integer("height"),         // cm
@@ -133,6 +134,50 @@ export const playerIncidents = sqliteTable("player_incidents", {
   description: text("description").notNull(),
   date: text("date").notNull(), // YYYY-MM-DD
   resolved: integer("resolved", { mode: "boolean" }).default(false),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+// ─── MATCHES (partidos) ───────────────────────────────────────────────────────
+export const matches = sqliteTable("matches", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  teamId: integer("team_id").notNull().references(() => teams.id),
+  date: text("date").notNull(),          // YYYY-MM-DD
+  time: text("time").default(""),        // hora del partido "HH:MM"
+  meetingTime: text("meeting_time").default(""), // hora de citación "HH:MM"
+  opponent: text("opponent").notNull().default(""), // rival
+  homeAway: text("home_away").notNull().default("home"), // "home" | "away"
+  venue: text("venue").default(""),      // pabellón / lugar
+  // Resultado final (null = no jugado todavía)
+  goalsFor: integer("goals_for"),
+  goalsAgainst: integer("goals_against"),
+  notes: text("notes").default(""),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+// ─── MATCH CALLUPS (convocatoria: jugador convocado sí/no) ────────────────────
+export const matchCallups = sqliteTable("match_callups", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  matchId: integer("match_id").notNull().references(() => matches.id),
+  playerId: integer("player_id").notNull().references(() => players.id),
+  called: integer("called", { mode: "boolean" }).notNull().default(true), // convocado
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+});
+
+// ─── MATCH DOCUMENTS (PDFs de preparación del partido) ───────────────────────
+export const matchDocuments = sqliteTable("match_documents", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  matchId: integer("match_id").notNull().references(() => matches.id),
+  name: text("name").notNull().default(""),   // nombre del fichero
+  pdfData: text("pdf_data").notNull().default(""), // base64 data-url
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),

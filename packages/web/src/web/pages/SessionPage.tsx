@@ -5,6 +5,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "../hooks/useIsMobile";
 import { playerWord } from "../lib/gender";
 import { authFetch } from "../lib/authFetch";
+import { ADDITIONAL_COLOR } from "../lib/additional";
+import { AdditionalBadge } from "../components/AdditionalBadge";
 
 interface Session {
   id: number;
@@ -54,7 +56,7 @@ type SideTab = "attendance" | "annotations" | "injuries";
 
 export default function SessionPage({ id }: { id?: string }) {
   const [, navigate] = useLocation();
-  const { token } = useAuth();
+  const { user, token } = useAuth();
   const qc = useQueryClient();
   const isMobile = useIsMobile();
 
@@ -63,6 +65,7 @@ export default function SessionPage({ id }: { id?: string }) {
   const [error, setError] = useState("");
   const [editing, setEditing] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   const [pdfTab, setPdfTab] = useState<"pista" | "fisico">("pista");
   const [sideTab, setSideTab] = useState<SideTab>("attendance");
@@ -104,7 +107,7 @@ export default function SessionPage({ id }: { id?: string }) {
       const res = await authFetch(`/api/attendance/${id}`, {}, token);
       return res.json();
     },
-    enabled: !!id && !!token,
+    enabled: !!id && !!user,
   });
 
   const { data: annotationsData } = useQuery({
@@ -113,7 +116,7 @@ export default function SessionPage({ id }: { id?: string }) {
       const res = await authFetch(`/api/annotations/${id}`, {}, token);
       return res.json();
     },
-    enabled: !!id && !!token,
+    enabled: !!id && !!user,
   });
 
   // Team info (for gender-aware wording)
@@ -123,7 +126,7 @@ export default function SessionPage({ id }: { id?: string }) {
       const res = await authFetch(`/api/teams/${session!.teamId}`, {}, token);
       return res.json();
     },
-    enabled: !!session?.teamId && !!token,
+    enabled: !!session?.teamId && !!user,
   });
   const teamGender = teamData?.team?.gender;
 
@@ -134,7 +137,7 @@ export default function SessionPage({ id }: { id?: string }) {
       const res = await authFetch(`/api/players?teamId=${session!.teamId}`, {}, token);
       return res.json();
     },
-    enabled: !!session?.teamId && !!token,
+    enabled: !!session?.teamId && !!user,
   });
 
   // Active injuries for the team
@@ -144,7 +147,7 @@ export default function SessionPage({ id }: { id?: string }) {
       const res = await authFetch(`/api/injuries/active?teamId=${session!.teamId}`, {}, token);
       return res.json();
     },
-    enabled: !!session?.teamId && !!token,
+    enabled: !!session?.teamId && !!user,
   });
 
   const initAttendance = useMutation({
@@ -262,6 +265,23 @@ export default function SessionPage({ id }: { id?: string }) {
     }
   };
 
+  const handleDelete = async () => {
+    if (!session) return;
+    if (!window.confirm("¿Seguro que quieres eliminar esta sesión?\n\nSe borrarán también su asistencia y anotaciones. Esta acción no se puede deshacer.")) return;
+    setDeleting(true);
+    try {
+      const res = await authFetch(`/api/sessions/${session.id}`, { method: "DELETE" }, token);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Error al eliminar la sesión");
+      qc.invalidateQueries({ queryKey: ["sessions"] });
+      qc.invalidateQueries({ queryKey: ["sessions-all"] });
+      navigate(session.teamId ? `/teams/${session.teamId}/sessions` : "/");
+    } catch (err: any) {
+      setError(err.message);
+      setDeleting(false);
+    }
+  };
+
   const handlePdfUpload = async (type: "pista" | "fisico", file: File) => {
     if (!session) return;
     setUploadingPdf(type);
@@ -298,6 +318,7 @@ export default function SessionPage({ id }: { id?: string }) {
   );
 
   const typeMeta = SESSION_TYPE_META[session.sessionType] ?? SESSION_TYPE_META.ataque;
+  const canEdit = teamData?.team?.role === "owner" || teamData?.team?.role === "editor";
 
   /* ─── INFO HEADER ─── */
   const infoHeader = (
@@ -334,7 +355,15 @@ export default function SessionPage({ id }: { id?: string }) {
             </button>
           </div>
         ) : (
-          <button className="btn-ghost" onClick={startEdit} style={{ fontSize: 12, padding: "5px 10px", flexShrink: 0 }}>Editar</button>
+          <div style={{ display: "flex", gap: 6, flexShrink: 0 }}>
+            <button className="btn-ghost" onClick={startEdit} style={{ fontSize: 12, padding: "5px 10px" }}>Editar</button>
+            {canEdit && (
+              <button className="btn-ghost" onClick={handleDelete} disabled={deleting}
+                style={{ fontSize: 12, padding: "5px 10px", color: "#FF3B30" }}>
+                {deleting ? "..." : "Eliminar"}
+              </button>
+            )}
+          </div>
         )}
       </div>
 
@@ -510,13 +539,15 @@ export default function SessionPage({ id }: { id?: string }) {
               display: "flex", alignItems: "center", gap: 8,
               padding: "8px 10px", borderRadius: 8, background: "var(--bg-secondary)",
               border: `1px solid ${STATUS_COLORS[record.status as AttendanceStatus]}33`,
+              borderLeft: record.isAdditional ? `3px solid ${ADDITIONAL_COLOR}` : undefined,
               flexWrap: "wrap",
             }}>
               <div style={{ width: 6, height: 6, borderRadius: "50%", background: STATUS_COLORS[record.status as AttendanceStatus], flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 80 }}>
-                <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {record.playerNumber != null ? <span style={{ color: "var(--accent)", marginRight: 5, fontSize: 11 }}>#{record.playerNumber}</span> : null}
-                  {record.playerName}
+                <div style={{ fontSize: 13, fontWeight: 500, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: 6 }}>
+                  {record.playerNumber != null ? <span style={{ color: "var(--accent)", marginRight: 2, fontSize: 11 }}>#{record.playerNumber}</span> : null}
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{record.playerName}</span>
+                  {record.isAdditional && <AdditionalBadge compact />}
                 </div>
                 {record.playerPosition && <div style={{ fontSize: 11, color: "var(--text-secondary)" }}>{record.playerPosition}</div>}
               </div>

@@ -48,7 +48,7 @@ export default function NewSessionPage() {
   // Load teams once
   if (!teamsLoaded) {
     setTeamsLoaded(true);
-    fetch("/api/teams", { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+    authFetch("/api/teams", {}, token)
       .then((r) => r.json())
       .then((d) => {
         const list = d.teams || [];

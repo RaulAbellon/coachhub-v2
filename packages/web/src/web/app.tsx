@@ -15,7 +15,10 @@ import MatchPage from "./pages/MatchPage";
 import PlayersPage from "./pages/PlayersPage";
 import ProfilePage from "./pages/ProfilePage";
 import LoginPage from "./pages/LoginPage";
+import ResetPasswordPage from "./pages/ResetPasswordPage";
 import Sidebar from "./components/Sidebar";
+
+const PUBLIC_PATHS = ["/login", "/reset-password"];
 import BottomNav from "./components/BottomNav";
 
 function AuthGuard({ children }: { children: React.ReactNode }) {
@@ -23,7 +26,7 @@ function AuthGuard({ children }: { children: React.ReactNode }) {
   const [location, navigate] = useLocation();
 
   useEffect(() => {
-    if (!isLoading && !user && location !== "/login") {
+    if (!isLoading && !user && !PUBLIC_PATHS.includes(location)) {
       navigate("/login");
     }
   }, [user, isLoading, location, navigate]);
@@ -44,9 +47,10 @@ function AppLayout() {
   const [location] = useLocation();
   const isMobile = useIsMobile();
 
-  if (!user || location === "/login") {
+  if (!user || PUBLIC_PATHS.includes(location)) {
     return (
       <Switch>
+        <Route path="/reset-password" component={ResetPasswordPage} />
         <Route path="/login" component={LoginPage} />
         <Route component={LoginPage} />
       </Switch>

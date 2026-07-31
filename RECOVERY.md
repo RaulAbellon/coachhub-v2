@@ -48,8 +48,8 @@ RESEND_API_KEY=<para emails de bienvenida / recuperación de contraseña — ped
 - GitHub: repo bajo la cuenta de Raúl (`RaulAbellon`), acceso vía PAT generado por él.
 - Turso: base `coachhub-raul-abellon`, credenciales dadas por Raúl — pendiente que él confirme
   acceso directo en turso.tech con su propia cuenta.
-- Resend (emails): pendiente de configurar — sin esta key, welcome email y forgot-password no
-  envían correo (el resto de la app funciona igual).
+- Resend (emails): configurado y verificado (envío de prueba OK) — welcome email y
+  forgot-password funcionando.
 - `BETTER_AUTH_SECRET`: generado en sandbox, solo vive en `.env` (gitignored) — Raúl debe guardar
   una copia propia (gestor de contraseñas) para no perderlo si cambia de entorno.
 

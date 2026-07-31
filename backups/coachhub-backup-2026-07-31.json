@@ -1,0 +1,18 @@
+{
+  "generatedAt": "2026-07-31T07:03:41.541Z",
+  "tables": {
+    "users": [],
+    "password_reset_tokens": [],
+    "teams": [],
+    "team_members": [],
+    "sessions": [],
+    "annotations": [],
+    "players": [],
+    "player_injuries": [],
+    "player_incidents": [],
+    "attendance": [],
+    "matches": [],
+    "match_callups": [],
+    "match_documents": []
+  }
+}

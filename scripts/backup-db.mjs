@@ -30,6 +30,7 @@ const client = createClient({ url, authToken });
 
 const TABLES = [
   "users",
+  "password_reset_tokens",
   "teams",
   "team_members",
   "sessions",
@@ -38,6 +39,9 @@ const TABLES = [
   "player_injuries",
   "player_incidents",
   "attendance",
+  "matches",
+  "match_callups",
+  "match_documents",
   // auth_tokens NO se incluye a propósito: son sesiones temporales, no datos reales.
 ];
 

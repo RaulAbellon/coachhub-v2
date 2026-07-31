@@ -44,6 +44,15 @@ RESEND_API_KEY=<para emails de bienvenida / recuperación de contraseña — ped
 
 `AI_GATEWAY_*` y `AUTUMN_SECRET_KEY` no se usan actualmente en CoachHub — dejar vacíos.
 
+**Estado de control (última verificación 2026-07-31):**
+- GitHub: repo bajo la cuenta de Raúl (`RaulAbellon`), acceso vía PAT generado por él.
+- Turso: base `coachhub-raul-abellon`, credenciales dadas por Raúl — pendiente que él confirme
+  acceso directo en turso.tech con su propia cuenta.
+- Resend (emails): pendiente de configurar — sin esta key, welcome email y forgot-password no
+  envían correo (el resto de la app funciona igual).
+- `BETTER_AUTH_SECRET`: generado en sandbox, solo vive en `.env` (gitignored) — Raúl debe guardar
+  una copia propia (gestor de contraseñas) para no perderlo si cambia de entorno.
+
 **Importante:** `DATABASE_URL` y `DATABASE_AUTH_TOKEN` son las credenciales reales de producción.
 Rotarlas (crear un token nuevo en Turso) invalida las antiguas — solo hacerlo si Raúl lo pide.
 

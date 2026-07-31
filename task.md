@@ -61,5 +61,6 @@
 - [x] Recuperar contraseña olvidada: mecanismo por email (Resend). Endpoints /api/auth/forgot-password (no revela existencia de cuenta) + /api/auth/reset-password (token 1h, un solo uso, invalida sesiones). Tabla password_reset_tokens. UI: enlace en LoginPage + ResetPasswordPage (ruta pública /reset-password). Servicio email.ts con cliente Resend lazy. Verificado end-to-end (registro->forgot->token DB->reset->login nueva contraseña, reuso de token rechazado)
 - [x] RESEND_API_KEY corregida en .env (estaba pegada sin salto de línea a RUNABLE_URL). Envío real confirmado a delivered@resend.dev
 - [x] build limpio + vitest 16/16 tests pasando
-- [ ] PENDIENTE tras confirmación del usuario: borrar toda la tabla de usuarios (y dependientes) + añadir índice único en users.email
-- [ ] avisar usuario -> publicar -> push
+- [x] Tabla de usuarios: no hacía falta borrar nada (proyecto migrado a Turso propio, DB nueva y vacía)
+- [x] Índice único en users.email: confirmado `users_email_unique` en la base real (aplicado vía schema + db:push)
+- [x] avisado usuario -> publicado -> pusheado

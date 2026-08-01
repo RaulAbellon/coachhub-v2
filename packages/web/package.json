@@ -6,17 +6,17 @@
     ".": "./src/api/index.ts"
   },
   "scripts": {
-    "build": "tsc --noEmit && tsc --noEmit -p tsconfig.api.json && vite build",
+    "build": "tsc --noEmit && vite build",
     "dev": "vite",
     "start": "bun src/__server.ts",
     "typecheck": "tsc --noEmit",
-    "typecheck:api": "tsc --noEmit -p tsconfig.api.json",
-    "test": "vitest run",
     "lint": "cd ../.. && oxlint packages/web --deny-warnings --no-error-on-unmatched-pattern",
     "preview": "bun run build && vite preview",
     "db:generate": "bun --env-file=../../.env drizzle-kit generate",
     "db:migrate": "bun --env-file=../../.env drizzle-kit migrate",
-    "db:push": "bun --env-file=../../.env drizzle-kit push"
+    "db:push": "bun --env-file=../../.env drizzle-kit push",
+    "typecheck:api": "tsc --noEmit -p tsconfig.api.json",
+    "test": "vitest run"
   },
   "dependencies": {
     "@libsql/client": "^0.17.2",

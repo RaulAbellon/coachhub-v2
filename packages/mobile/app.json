@@ -10,8 +10,8 @@
       "edgeToEdgeEnabled": true
     },
     "extra": {
-      "apiUrl": "https://coachhu-0j74o09-preview-4200.runable.site/",
-      "applicationId": "coachhu-0j74o09",
+      "apiUrl": "https://coachhu-hs8tdl6-preview-4200.runable.site/",
+      "applicationId": "coachhu-hs8tdl6",
       "runableAuthIssuer": "https://api.runable.com/api/auth"
     },
     "ios": {
@@ -26,7 +26,7 @@
     "name": "mobile",
     "slug": "mobile",
     "version": "1.0.0",
-    "scheme": "runable-coachhu-0j74o09",
+    "scheme": "runable-coachhu-hs8tdl6",
     "orientation": "portrait",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,

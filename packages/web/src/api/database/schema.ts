@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 // ─── USERS ────────────────────────────────────────────────────────────────────
 export const users = sqliteTable("users", {
@@ -219,3 +219,46 @@ export const attendance = sqliteTable("attendance", {
     .notNull()
     .$defaultFn(() => new Date()),
 });
+
+// ─── TEAM FORM FIELDS (configuración editable del formulario de fichas) ───────
+// Cada equipo define qué campos aparecen en la ficha del jugador y en el
+// Google Form de importación. Los campos "builtin" mapean a columnas nativas
+// de `players`; los personalizados guardan su valor en `player_custom_values`.
+export const teamFormFields = sqliteTable("team_form_fields", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  teamId: integer("team_id").notNull().references(() => teams.id),
+  key: text("key").notNull(),            // slug interno estable, nunca cambia
+  label: text("label").notNull(),        // etiqueta visible (puede cambiar)
+  formLabel: text("form_label").default(""), // snapshot del label al generar el Apps Script (fallback de mapeo)
+  type: text("type").notNull().default("text"), // text | number | date | paragraph | select | multiselect | boolean
+  options: text("options").default(""),  // JSON array de strings (select/multiselect)
+  enabled: integer("enabled", { mode: "boolean" }).notNull().default(true),
+  sortOrder: integer("sort_order").notNull().default(0),
+  isBuiltin: integer("is_builtin", { mode: "boolean" }).notNull().default(false),
+  mapsToColumn: text("maps_to_column"),  // columna de `players` o null si es personalizado
+  deletedAt: integer("deleted_at", { mode: "timestamp" }), // soft-delete
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+}, (t) => ({
+  teamKeyUnique: uniqueIndex("team_form_fields_team_key_unique").on(t.teamId, t.key),
+}));
+
+// ─── PLAYER CUSTOM VALUES (valores de campos personalizados) ─────────────────
+export const playerCustomValues = sqliteTable("player_custom_values", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  playerId: integer("player_id").notNull().references(() => players.id),
+  fieldId: integer("field_id").notNull().references(() => teamFormFields.id),
+  value: text("value").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+}, (t) => ({
+  playerFieldUnique: uniqueIndex("player_custom_values_player_field_unique").on(t.playerId, t.fieldId),
+}));

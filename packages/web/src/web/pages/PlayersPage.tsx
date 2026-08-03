@@ -7,6 +7,8 @@ import { playerWord } from "../lib/gender";
 import { authFetch } from "../lib/authFetch";
 import { ADDITIONAL_COLOR, ADDITIONAL_DIM } from "../lib/additional";
 import { AdditionalBadge } from "../components/AdditionalBadge";
+import { formatFieldValue, type FormField } from "../lib/formFields";
+import { generatePlayerPdf, type PlayerSummary } from "../lib/playerPdf";
 
 const POSITIONS = [
   "Portera",
@@ -35,6 +37,7 @@ type Player = {
   allergies: string | null;
   notes: string | null;
   createdAt: any;
+  customValues?: Record<number, string>;
 };
 
 type Injury = {
@@ -110,7 +113,11 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
   const [editInjury, setEditInjury] = useState<Injury | null>(null);
 
   const [form, setForm] = useState(emptyPlayerForm());
+  const [customForm, setCustomForm] = useState<Record<number, string>>({});
   const [injuryForm, setInjuryForm] = useState(emptyInjuryForm());
+  const [savingPlayer, setSavingPlayer] = useState(false);
+  const [saveError, setSaveError] = useState("");
+  const [pdfPlayer, setPdfPlayer] = useState<Player | null>(null);
 
   const { data: teamData } = useQuery({
     queryKey: ["team", teamId],
@@ -130,13 +137,23 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
     enabled: !!selectedPlayer,
   });
 
+  // ─── Configuración de campos de la ficha (por equipo) ───────────────────────
+  const formFields: FormField[] = playersData?.fields ?? [];
+  const enabledFields = [...formFields]
+    .filter(f => f.enabled)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+  const customFields = enabledFields.filter(f => !f.mapsToColumn);
+  const fieldByKey = new Map(formFields.map(f => [f.key, f]));
+  const isFieldOn = (key: string) => fieldByKey.get(key)?.enabled ?? true;
+  const fieldLabel = (key: string, fallback: string) => fieldByKey.get(key)?.label ?? fallback;
+
   // ─── Mutations ───────────────────────────────────────────────────────────────
   const createPlayer = useMutation({
     mutationFn: async (data: any) => (await authFetch("/api/players", { method: "POST", body: JSON.stringify(data) }, token)).json(),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["players", teamId] });
       setShowAddPlayer(false);
-      setForm(emptyPlayerForm());
+      setForm(emptyPlayerForm()); setCustomForm({}); setSaveError("");
     },
   });
 
@@ -216,6 +233,8 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
       notes: p.notes ?? "",
       photoData: p.photoData ?? "",
     });
+    setCustomForm({ ...(p.customValues ?? {}) });
+    setSaveError("");
     setShowAddPlayer(true);
   };
 
@@ -234,7 +253,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
     setShowAddInjury(true);
   };
 
-  const savePlayerForm = () => {
+  const savePlayerForm = async () => {
     const data = {
       teamId,
       name: form.name,
@@ -251,8 +270,46 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
       notes: form.notes,
       photoData: form.photoData,
     };
-    if (editPlayer) updatePlayer.mutate({ id: editPlayer.id, data });
-    else createPlayer.mutate(data);
+    const values = { ...customForm };
+    setSavingPlayer(true);
+    setSaveError("");
+    try {
+      let playerId = editPlayer?.id ?? null;
+      if (editPlayer) {
+        const res = await updatePlayer.mutateAsync({ id: editPlayer.id, data });
+        if (res?.error) throw new Error(res.error);
+      } else {
+        const res = await createPlayer.mutateAsync(data);
+        if (res?.error) throw new Error(res.error);
+        playerId = res?.player?.id ?? null;
+      }
+
+      // Campos personalizados (los nativos ya van en el PUT/POST de arriba)
+      if (playerId && customFields.length > 0) {
+        const payload: Record<number, string> = {};
+        for (const f of customFields) payload[f.id] = values[f.id] ?? "";
+        const res = await authFetch(
+          `/api/players/${playerId}/custom-values`,
+          { method: "PUT", body: JSON.stringify({ values: payload }) },
+          token,
+        );
+        const json = await res.json().catch(() => null);
+        if (!res.ok) {
+          const detail = json?.errors ? Object.values(json.errors).join(" · ") : json?.error;
+          throw new Error(detail || "No se pudieron guardar los campos personalizados");
+        }
+      }
+
+      qc.invalidateQueries({ queryKey: ["players", teamId] });
+      setShowAddPlayer(false);
+      setEditPlayer(null);
+      setForm(emptyPlayerForm());
+      setCustomForm({});
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Error al guardar");
+    } finally {
+      setSavingPlayer(false);
+    }
   };
 
   const saveInjuryForm = () => {
@@ -273,6 +330,10 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
   const activeInjuries = (injuriesData?.injuries ?? []).filter((i: Injury) => !i.resolved).length;
 
   const players: Player[] = playersData?.players ?? [];
+  // Siempre la versión fresca del jugador seleccionado (incluye customValues).
+  const selectedLive: Player | null = selectedPlayer
+    ? players.find(p => p.id === selectedPlayer.id) ?? selectedPlayer
+    : null;
   const injuries: Injury[] = injuriesData?.injuries ?? [];
   const team = teamData?.team;
 
@@ -287,7 +348,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
           </h1>
           <p className="label-caps" style={{ marginTop: 4 }}>{players.length} {playerWord(team?.gender, players.length !== 1)}</p>
         </div>
-        <button className="btn-primary" onClick={() => { setEditPlayer(null); setForm(emptyPlayerForm()); setShowAddPlayer(true); }}
+        <button className="btn-primary" onClick={() => { setEditPlayer(null); setForm(emptyPlayerForm()); setCustomForm({}); setSaveError(""); setShowAddPlayer(true); }}
           style={isMobile ? { flex: "1 1 100%", justifyContent: "center", order: 3 } : {}}>
           + Añadir {playerWord(team?.gender, false)}
         </button>
@@ -385,7 +446,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
             style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.55)", zIndex: 200, backdropFilter: "blur(2px)" }}
           />
         )}
-        {selectedPlayer && (
+        {selectedLive && (
           <div className="card fade-in" style={isMobile ? {
             position: "fixed", left: 0, right: 0, bottom: 0,
             width: "100%", padding: 0, maxHeight: "80vh", overflowY: "auto",
@@ -405,20 +466,20 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
                   background: "var(--bg-secondary)", flexShrink: 0,
                   display: "flex", alignItems: "center", justifyContent: "center", fontSize: 22,
                 }}>
-                  {selectedPlayer.photoData ? (
-                    <img src={selectedPlayer.photoData} alt={selectedPlayer.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                  {selectedLive.photoData ? (
+                    <img src={selectedLive.photoData} alt={selectedLive.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
                   ) : "👤"}
                 </div>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 6, minWidth: 0 }}>
-                    <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedPlayer.name}</span>
-                    {selectedPlayer.isAdditional && <AdditionalBadge />}
+                    <span style={{ fontWeight: 700, fontSize: 15, color: "var(--text-primary)", whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{selectedLive.name}</span>
+                    {selectedLive.isAdditional && <AdditionalBadge />}
                   </div>
-                  {selectedPlayer.number != null && (
-                    <span style={{ fontSize: 12, color: "var(--accent)", marginRight: 8 }}>#{selectedPlayer.number}</span>
+                  {selectedLive.number != null && (
+                    <span style={{ fontSize: 12, color: "var(--accent)", marginRight: 8 }}>#{selectedLive.number}</span>
                   )}
                   <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-                    {parsePositions(selectedPlayer.positions).join(" · ") || "Sin posición"}
+                    {parsePositions(selectedLive.positions).join(" · ") || "Sin posición"}
                   </div>
                 </div>
                 {isMobile && (
@@ -452,7 +513,13 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
             {/* Tab content */}
             <div style={{ padding: "16px 20px 20px" }}>
               {panelView === "ficha" ? (
-                <FichaTab player={selectedPlayer} onEdit={() => openEdit(selectedPlayer)} onDelete={() => deletePlayer.mutate(selectedPlayer.id)} />
+                <FichaTab
+                  player={selectedLive}
+                  fields={enabledFields}
+                  onEdit={() => openEdit(selectedLive)}
+                  onDelete={() => deletePlayer.mutate(selectedLive.id)}
+                  onExportPdf={() => setPdfPlayer(selectedLive)}
+                />
               ) : (
                 <LesionesTab
                   injuries={injuries}
@@ -470,24 +537,28 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
 
       {/* ── Add/Edit player modal ───────────────────────────────────────────── */}
       {showAddPlayer && (
-        <Modal onClose={() => { setShowAddPlayer(false); setEditPlayer(null); setForm(emptyPlayerForm()); }}>
+        <Modal onClose={() => { setShowAddPlayer(false); setEditPlayer(null); setForm(emptyPlayerForm()); setCustomForm({}); setSaveError(""); }}>
           <h2 style={{ fontSize: 17, fontWeight: 700, marginBottom: 20 }}>{editPlayer ? `Editar ${playerWord(team?.gender, false)}` : `${team?.gender === "masculino" ? "Nuevo" : "Nueva"} ${playerWord(team?.gender, false)}`}</h2>
 
           <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr" : "1fr 1fr", gap: "0 16px" }}>
             <div style={{ gridColumn: "1/-1" }}>
-              <label style={labelStyle}>Nombre y apellidos *</label>
+              <label style={labelStyle}>{fieldLabel("nombre", "Nombre y apellidos")} *</label>
               <input style={inputStyle} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} placeholder="Nombre completo" autoFocus />
             </div>
 
-            <div>
-              <label style={labelStyle}>Dorsal</label>
-              <input style={inputStyle} type="number" value={form.number} onChange={e => setForm(f => ({ ...f, number: e.target.value }))} placeholder="Nº" min={1} max={99} />
-            </div>
+            {isFieldOn("dorsal") && (
+              <div>
+                <label style={labelStyle}>{fieldLabel("dorsal", "Dorsal")}</label>
+                <input style={inputStyle} type="number" value={form.number} onChange={e => setForm(f => ({ ...f, number: e.target.value }))} placeholder="Nº" min={1} max={99} />
+              </div>
+            )}
 
-            <div>
-              <label style={labelStyle}>Fecha de nacimiento</label>
-              <input style={inputStyle} type="date" placeholder="DD/MM/AAAA" value={form.birthDate || ""} onChange={e => setForm(f => ({ ...f, birthDate: e.target.value }))} />
-            </div>
+            {isFieldOn("fecha_nac") && (
+              <div>
+                <label style={labelStyle}>{fieldLabel("fecha_nac", "Fecha de nacimiento")}</label>
+                <input style={inputStyle} type="date" placeholder="DD/MM/AAAA" value={form.birthDate || ""} onChange={e => setForm(f => ({ ...f, birthDate: e.target.value }))} />
+              </div>
+            )}
 
             <div>
               <label style={labelStyle}>Foto (opcional)</label>
@@ -508,21 +579,25 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
           </div>
 
           {/* Posiciones (multi-select) */}
-          <label style={labelStyle}>Posición (puedes elegir varias)</label>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-            {POSITIONS.map(pos => (
-              <button key={pos} onClick={() => togglePosition(pos)}
-                style={{
-                  padding: "5px 12px", fontSize: 12, borderRadius: 20,
-                  border: `1px solid ${form.positions.includes(pos) ? "var(--accent)" : "var(--border)"}`,
-                  background: form.positions.includes(pos) ? "var(--accent-dim)" : "var(--bg-secondary)",
-                  color: form.positions.includes(pos) ? "var(--accent)" : "var(--text-secondary)",
-                  cursor: "pointer", transition: "all 0.15s",
-                }}>
-                {pos}
-              </button>
-            ))}
-          </div>
+          {isFieldOn("posicion") && (
+            <>
+              <label style={labelStyle}>{fieldLabel("posicion", "Posición")} (puedes elegir varias)</label>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                {(fieldByKey.get("posicion")?.options?.length ? fieldByKey.get("posicion")!.options : POSITIONS).map(pos => (
+                  <button key={pos} onClick={() => togglePosition(pos)}
+                    style={{
+                      padding: "5px 12px", fontSize: 12, borderRadius: 20,
+                      border: `1px solid ${form.positions.includes(pos) ? "var(--accent)" : "var(--border)"}`,
+                      background: form.positions.includes(pos) ? "var(--accent-dim)" : "var(--bg-secondary)",
+                      color: form.positions.includes(pos) ? "var(--accent)" : "var(--text-secondary)",
+                      cursor: "pointer", transition: "all 0.15s",
+                    }}>
+                    {pos}
+                  </button>
+                ))}
+              </div>
+            </>
+          )}
 
           {/* Jugador adicional (sube de categoría inferior) */}
           <button
@@ -553,54 +628,105 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
           </button>
 
           {/* Medidas */}
-          <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 20, marginBottom: 0 }}>MEDIDAS</p>
-          <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: "0 12px" }}>
-            <div>
-              <label style={labelStyle}>Altura (cm)</label>
-              <input style={inputStyle} type="number" value={form.height} onChange={e => setForm(f => ({ ...f, height: e.target.value }))} placeholder="175" />
-            </div>
-            <div>
-              <label style={labelStyle}>Peso (kg)</label>
-              <input style={inputStyle} type="number" value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} placeholder="70" />
-            </div>
-            <div>
-              <label style={labelStyle}>Envergadura (cm)</label>
-              <input style={inputStyle} type="number" value={form.wingspan} onChange={e => setForm(f => ({ ...f, wingspan: e.target.value }))} placeholder="180" />
-            </div>
-          </div>
+          {(isFieldOn("altura") || isFieldOn("peso") || isFieldOn("envergadura")) && (
+            <>
+              <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 20, marginBottom: 0 }}>MEDIDAS</p>
+              <div style={{ display: "grid", gridTemplateColumns: isMobile ? "1fr 1fr" : "1fr 1fr 1fr", gap: "0 12px" }}>
+                {isFieldOn("altura") && (
+                  <div>
+                    <label style={labelStyle}>{fieldLabel("altura", "Altura (cm)")}</label>
+                    <input style={inputStyle} type="number" value={form.height} onChange={e => setForm(f => ({ ...f, height: e.target.value }))} placeholder="175" />
+                  </div>
+                )}
+                {isFieldOn("peso") && (
+                  <div>
+                    <label style={labelStyle}>{fieldLabel("peso", "Peso (kg)")}</label>
+                    <input style={inputStyle} type="number" value={form.weight} onChange={e => setForm(f => ({ ...f, weight: e.target.value }))} placeholder="70" />
+                  </div>
+                )}
+                {isFieldOn("envergadura") && (
+                  <div>
+                    <label style={labelStyle}>{fieldLabel("envergadura", "Envergadura (cm)")}</label>
+                    <input style={inputStyle} type="number" value={form.wingspan} onChange={e => setForm(f => ({ ...f, wingspan: e.target.value }))} placeholder="180" />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
 
           {/* Salud */}
-          <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 20, marginBottom: 0 }}>INFORMACIÓN MÉDICA</p>
+          {(isFieldOn("enfermedades") || isFieldOn("lesiones") || isFieldOn("alergias")) && (
+            <>
+              <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 20, marginBottom: 0 }}>INFORMACIÓN MÉDICA</p>
 
-          <label style={labelStyle}>Enfermedades crónicas</label>
-          <textarea style={{ ...inputStyle, resize: "vertical" }} value={form.chronicDiseases}
-            onChange={e => setForm(f => ({ ...f, chronicDiseases: e.target.value }))}
-            placeholder="Asma, diabetes, etc. (dejar vacío si ninguna)" rows={2} />
+              {isFieldOn("enfermedades") && (
+                <>
+                  <label style={labelStyle}>{fieldLabel("enfermedades", "Enfermedades crónicas")}</label>
+                  <textarea style={{ ...inputStyle, resize: "vertical" }} value={form.chronicDiseases}
+                    onChange={e => setForm(f => ({ ...f, chronicDiseases: e.target.value }))}
+                    placeholder="Asma, diabetes, etc. (dejar vacío si ninguna)" rows={2} />
+                </>
+              )}
 
-          <label style={labelStyle}>Lesiones previas relevantes</label>
-          <textarea style={{ ...inputStyle, resize: "vertical" }} value={form.previousInjuries}
-            onChange={e => setForm(f => ({ ...f, previousInjuries: e.target.value }))}
-            placeholder="Rotura LCA 2022, etc. (dejar vacío si ninguna)" rows={2} />
+              {isFieldOn("lesiones") && (
+                <>
+                  <label style={labelStyle}>{fieldLabel("lesiones", "Lesiones previas")}</label>
+                  <textarea style={{ ...inputStyle, resize: "vertical" }} value={form.previousInjuries}
+                    onChange={e => setForm(f => ({ ...f, previousInjuries: e.target.value }))}
+                    placeholder="Rotura LCA 2022, etc. (dejar vacío si ninguna)" rows={2} />
+                </>
+              )}
 
-          <label style={labelStyle}>Alergias / Intolerancias</label>
-          <textarea style={{ ...inputStyle, resize: "vertical" }} value={form.allergies}
-            onChange={e => setForm(f => ({ ...f, allergies: e.target.value }))}
-            placeholder="Penicilina, gluten, etc. (dejar vacío si ninguna)" rows={2} />
+              {isFieldOn("alergias") && (
+                <>
+                  <label style={labelStyle}>{fieldLabel("alergias", "Alergias / Intolerancias")}</label>
+                  <textarea style={{ ...inputStyle, resize: "vertical" }} value={form.allergies}
+                    onChange={e => setForm(f => ({ ...f, allergies: e.target.value }))}
+                    placeholder="Penicilina, gluten, etc. (dejar vacío si ninguna)" rows={2} />
+                </>
+              )}
+            </>
+          )}
 
-          <label style={labelStyle}>Notas adicionales</label>
-          <textarea style={{ ...inputStyle, resize: "vertical" }} value={form.notes}
-            onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
-            placeholder="Observaciones del entrenador..." rows={2} />
+          {isFieldOn("notas") && (
+            <>
+              <label style={labelStyle}>{fieldLabel("notas", "Notas adicionales")}</label>
+              <textarea style={{ ...inputStyle, resize: "vertical" }} value={form.notes}
+                onChange={e => setForm(f => ({ ...f, notes: e.target.value }))}
+                placeholder="Observaciones del entrenador..." rows={2} />
+            </>
+          )}
+
+          {/* Campos personalizados del equipo */}
+          {customFields.length > 0 && (
+            <>
+              <p style={{ fontSize: 11, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", marginTop: 20, marginBottom: 0 }}>
+                OTROS DATOS DE LA FICHA
+              </p>
+              {customFields.map(f => (
+                <CustomFieldInput
+                  key={f.id}
+                  field={f}
+                  value={customForm[f.id] ?? ""}
+                  onChange={v => setCustomForm(prev => ({ ...prev, [f.id]: v }))}
+                />
+              ))}
+            </>
+          )}
+
+          {saveError && (
+            <p style={{ fontSize: 12, color: "#FF3B30", marginTop: 14 }}>{saveError}</p>
+          )}
 
           <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
-            <button className="btn-ghost" onClick={() => { setShowAddPlayer(false); setEditPlayer(null); setForm(emptyPlayerForm()); }}>
+            <button className="btn-ghost" onClick={() => { setShowAddPlayer(false); setEditPlayer(null); setForm(emptyPlayerForm()); setCustomForm({}); setSaveError(""); }}>
               Cancelar
             </button>
             <button className="btn-primary"
-              disabled={!form.name.trim()}
-              style={{ opacity: !form.name.trim() ? 0.5 : 1 }}
+              disabled={!form.name.trim() || savingPlayer}
+              style={{ opacity: !form.name.trim() || savingPlayer ? 0.5 : 1 }}
               onClick={savePlayerForm}>
-              {editPlayer ? "Guardar cambios" : `Añadir ${playerWord(team?.gender, false)}`}
+              {savingPlayer ? "Guardando..." : editPlayer ? "Guardar cambios" : `Añadir ${playerWord(team?.gender, false)}`}
             </button>
           </div>
         </Modal>
@@ -638,7 +764,93 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
           </div>
         </Modal>
       )}
+
+      {/* ── Exportar ficha en PDF ────────────────────────────────────────────── */}
+      {pdfPlayer && (
+        <PdfExportModal
+          player={pdfPlayer}
+          teamColor={team?.color || "#FF6B35"}
+          token={token}
+          onClose={() => setPdfPlayer(null)}
+        />
+      )}
     </div>
+  );
+}
+
+// ─── EXPORTAR FICHA EN PDF ────────────────────────────────────────────────────
+function seasonStart(): string {
+  const now = new Date();
+  const year = now.getMonth() >= 7 ? now.getFullYear() : now.getFullYear() - 1;
+  return `${year}-08-01`;
+}
+
+function PdfExportModal({ player, teamColor, token, onClose }: {
+  player: Player;
+  teamColor: string;
+  token: string | null;
+  onClose: () => void;
+}) {
+  const [from, setFrom] = useState(seasonStart());
+  const [to, setTo] = useState(new Date().toISOString().slice(0, 10));
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const run = async () => {
+    setBusy(true);
+    setError("");
+    try {
+      const qs = new URLSearchParams();
+      if (from) { qs.set("attendanceFrom", from); qs.set("callupsFrom", from); }
+      if (to) { qs.set("attendanceTo", to); qs.set("callupsTo", to); }
+      const res = await authFetch(`/api/players/${player.id}/summary?${qs.toString()}`, {}, token);
+      const json = await res.json();
+      if (!res.ok) throw new Error(json?.error || "No se pudo generar el resumen");
+      generatePlayerPdf(json as PlayerSummary, { from, to }, teamColor);
+      onClose();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error al generar el PDF");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal onClose={onClose}>
+      <h2 style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Exportar ficha en PDF</h2>
+      <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 6 }}>{player.name}</p>
+      <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+        El PDF incluye los datos de la ficha, la asistencia a entrenamientos y las convocatorias
+        a partidos dentro del periodo elegido.
+      </p>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0 12px" }}>
+        <div>
+          <label style={labelStyle}>Desde</label>
+          <input style={inputStyle} type="date" value={from} onChange={e => setFrom(e.target.value)} />
+        </div>
+        <div>
+          <label style={labelStyle}>Hasta</label>
+          <input style={inputStyle} type="date" value={to} onChange={e => setTo(e.target.value)} />
+        </div>
+      </div>
+
+      <button
+        onClick={() => { setFrom(""); setTo(""); }}
+        className="btn-ghost"
+        style={{ marginTop: 12, fontSize: 11, padding: "4px 10px" }}>
+        Todo el histórico
+      </button>
+
+      {error && <p style={{ fontSize: 12, color: "#FF3B30", marginTop: 14 }}>{error}</p>}
+
+      <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
+        <button className="btn-ghost" onClick={onClose}>Cancelar</button>
+        <button className="btn-primary" disabled={busy} style={{ opacity: busy ? 0.5 : 1 }} onClick={run}>
+          {busy ? "Generando..." : "Descargar PDF"}
+        </button>
+      </div>
+    </Modal>
   );
 }
 
@@ -659,28 +871,50 @@ function formatDate(dateStr: string | null): string {
   return `${d}/${m}/${y}`;
 }
 
-function FichaTab({ player, onEdit, onDelete }: { player: Player; onEdit: () => void; onDelete: () => void }) {
+const HEALTH_COLORS: Record<string, string> = {
+  enfermedades: "#FF6B35",
+  lesiones: "#FF9500",
+  alergias: "#FF3B30",
+};
+
+// Claves ya representadas en la cabecera del panel del jugador.
+const HEADER_KEYS = new Set(["nombre", "dorsal", "posicion"]);
+
+function fieldValueOf(player: Player, f: FormField): string {
+  const raw = f.mapsToColumn
+    ? (player as unknown as Record<string, unknown>)[f.mapsToColumn]
+    : player.customValues?.[f.id];
+  return formatFieldValue({ type: f.type }, raw ?? "");
+}
+
+function FichaTab({ player, fields, onEdit, onDelete, onExportPdf }: {
+  player: Player;
+  fields: FormField[];
+  onEdit: () => void;
+  onDelete: () => void;
+  onExportPdf: () => void;
+}) {
   const [confirmDelete, setConfirmDelete] = useState(false);
 
-  const rows: [string, string][] = [
-    ["Altura", player.height ? `${player.height} cm` : "—"],
-    ["Peso", player.weight ? `${player.weight} kg` : "—"],
-    ["Envergadura", player.wingspan ? `${player.wingspan} cm` : "—"],
-  ];
+  const visible = fields.filter(f => !HEADER_KEYS.has(f.key));
+  const birth = visible.find(f => f.key === "fecha_nac");
+  const rest = visible.filter(f => f.key !== "fecha_nac");
 
-  const healthRows: [string, string, string][] = [
-    ["Enfermedades crónicas", player.chronicDiseases ?? "", "#FF6B35"],
-    ["Lesiones previas", player.previousInjuries ?? "", "#FF9500"],
-    ["Alergias / Intolerancias", player.allergies ?? "", "#FF3B30"],
-  ];
+  // Métricas numéricas → tarjetas compactas. Salud → cajas de color.
+  // El resto (texto, párrafo, fecha, opciones, sí/no) → filas etiqueta + valor.
+  const metrics = rest.filter(f => f.type === "number" && fieldValueOf(player, f));
+  const health = rest.filter(f => HEALTH_COLORS[f.key]);
+  const others = rest.filter(f => f.type !== "number" && !HEALTH_COLORS[f.key]);
+
+  const unitFor = (key: string) => (key === "peso" ? " kg" : key === "altura" || key === "envergadura" ? " cm" : "");
 
   return (
     <div>
-      {/* Datos personales */}
-      {player.birthDate && (
+      {/* Fecha de nacimiento + edad */}
+      {birth && player.birthDate && (
         <div style={{ display: "flex", gap: 12, marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: "var(--bg-secondary)" }}>
           <div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>Fecha de nacimiento</div>
+            <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>{birth.label}</div>
             <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{formatDate(player.birthDate)}</div>
           </div>
           <div style={{ width: 1, background: "var(--border)" }} />
@@ -691,45 +925,78 @@ function FichaTab({ player, onEdit, onDelete }: { player: Player; onEdit: () => 
         </div>
       )}
 
-      {/* Medidas */}
-      <p className="label-caps" style={{ marginBottom: 10 }}>Medidas</p>
-      <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-        {rows.map(([k, v]) => (
-          <div key={k} style={{
-            flex: 1, padding: "10px 8px", borderRadius: 8,
-            background: "var(--bg-secondary)", textAlign: "center",
-          }}>
-            <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>{v}</div>
-            <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>{k}</div>
-          </div>
-        ))}
-      </div>
-
-      {/* Salud */}
-      <p className="label-caps" style={{ marginBottom: 10 }}>Información médica</p>
-      {healthRows.map(([label, value, color]) => (
-        value ? (
-          <div key={label} style={{
-            padding: "8px 12px", borderRadius: 8, marginBottom: 6,
-            background: `${color}11`, border: `1px solid ${color}33`,
-          }}>
-            <div style={{ fontSize: 10, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{label}</div>
-            <div style={{ fontSize: 13, color: "var(--text-primary)" }}>{value}</div>
-          </div>
-        ) : null
-      ))}
-      {!player.chronicDiseases && !player.previousInjuries && !player.allergies && (
-        <p style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>Sin datos médicos registrados</p>
-      )}
-
-      {player.notes && (
+      {/* Métricas */}
+      {metrics.length > 0 && (
         <>
-          <p className="label-caps" style={{ marginTop: 14, marginBottom: 6 }}>Notas</p>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.5 }}>{player.notes}</p>
+          <p className="label-caps" style={{ marginBottom: 10 }}>Datos</p>
+          <div style={{ display: "flex", gap: 8, marginBottom: 16, flexWrap: "wrap" }}>
+            {metrics.map(f => (
+              <div key={f.id} style={{
+                flex: "1 1 88px", padding: "10px 8px", borderRadius: 8,
+                background: "var(--bg-secondary)", textAlign: "center",
+              }}>
+                <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>
+                  {fieldValueOf(player, f)}{unitFor(f.key)}
+                </div>
+                <div style={{ fontSize: 10, color: "var(--text-muted)", marginTop: 2 }}>
+                  {f.label.replace(/\s*\((cm|kg)\)\s*$/i, "")}
+                </div>
+              </div>
+            ))}
+          </div>
         </>
       )}
 
-      <div style={{ display: "flex", gap: 8, marginTop: 18 }}>
+      {/* Otros campos (nativos + personalizados, en el orden configurado) */}
+      {others.some(f => fieldValueOf(player, f)) && (
+        <>
+          <p className="label-caps" style={{ marginBottom: 10 }}>Ficha</p>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8, marginBottom: 16 }}>
+            {others.map(f => {
+              const value = fieldValueOf(player, f);
+              if (!value) return null;
+              return (
+                <div key={f.id} style={{ padding: "8px 12px", borderRadius: 8, background: "var(--bg-secondary)" }}>
+                  <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>
+                    {f.label}
+                  </div>
+                  <div style={{ fontSize: 13, color: "var(--text-primary)", lineHeight: 1.45, whiteSpace: "pre-wrap" }}>{value}</div>
+                </div>
+              );
+            })}
+          </div>
+        </>
+      )}
+
+      {/* Salud */}
+      {health.length > 0 && (
+        <>
+          <p className="label-caps" style={{ marginBottom: 10 }}>Información médica</p>
+          {health.map(f => {
+            const value = fieldValueOf(player, f);
+            if (!value) return null;
+            const color = HEALTH_COLORS[f.key];
+            return (
+              <div key={f.id} style={{
+                padding: "8px 12px", borderRadius: 8, marginBottom: 6,
+                background: `${color}11`, border: `1px solid ${color}33`,
+              }}>
+                <div style={{ fontSize: 10, fontWeight: 700, color, textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 3 }}>{f.label}</div>
+                <div style={{ fontSize: 13, color: "var(--text-primary)", whiteSpace: "pre-wrap" }}>{value}</div>
+              </div>
+            );
+          })}
+          {!health.some(f => fieldValueOf(player, f)) && (
+            <p style={{ fontSize: 12, color: "var(--text-muted)", fontStyle: "italic" }}>Sin datos médicos registrados</p>
+          )}
+        </>
+      )}
+
+      <button className="btn-ghost" onClick={onExportPdf} style={{ width: "100%", marginTop: 18, fontSize: 12 }}>
+        Exportar ficha en PDF
+      </button>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
         <button className="btn-ghost" onClick={onEdit} style={{ flex: 1, fontSize: 12 }}>Editar ficha</button>
         {!confirmDelete ? (
           <button onClick={() => setConfirmDelete(true)}
@@ -750,6 +1017,93 @@ function FichaTab({ player, onEdit, onDelete }: { player: Player; onEdit: () => 
         )}
       </div>
     </div>
+  );
+}
+
+// ─── INPUT DE CAMPO PERSONALIZADO ─────────────────────────────────────────────
+function CustomFieldInput({ field, value, onChange }: {
+  field: FormField;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  if (field.type === "paragraph") {
+    return (
+      <>
+        <label style={labelStyle}>{field.label}</label>
+        <textarea style={{ ...inputStyle, resize: "vertical" }} rows={2} value={value}
+          onChange={e => onChange(e.target.value)} />
+      </>
+    );
+  }
+
+  if (field.type === "boolean") {
+    const isYes = value === "true";
+    return (
+      <>
+        <label style={labelStyle}>{field.label}</label>
+        <div style={{ display: "flex", gap: 6 }}>
+          {([["true", "Sí"], ["false", "No"], ["", "—"]] as const).map(([v, label]) => (
+            <button key={label} onClick={() => onChange(v)}
+              style={{
+                flex: 1, padding: "7px 0", fontSize: 12, borderRadius: 8, cursor: "pointer",
+                border: `1px solid ${value === v ? "var(--accent)" : "var(--border)"}`,
+                background: value === v ? "var(--accent-dim)" : "var(--bg-secondary)",
+                color: value === v ? "var(--accent)" : "var(--text-secondary)",
+              }}>{label}</button>
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  if (field.type === "select") {
+    return (
+      <>
+        <label style={labelStyle}>{field.label}</label>
+        <select style={inputStyle} value={value} onChange={e => onChange(e.target.value)}>
+          <option value="">— Sin valor —</option>
+          {field.options.map(o => <option key={o} value={o}>{o}</option>)}
+        </select>
+      </>
+    );
+  }
+
+  if (field.type === "multiselect") {
+    let selected: string[] = [];
+    try { const parsed = JSON.parse(value || "[]"); if (Array.isArray(parsed)) selected = parsed.map(String); }
+    catch { selected = value ? value.split(",").map(v => v.trim()).filter(Boolean) : []; }
+    const toggle = (o: string) => {
+      const next = selected.includes(o) ? selected.filter(x => x !== o) : [...selected, o];
+      onChange(next.length > 0 ? JSON.stringify(next) : "");
+    };
+    return (
+      <>
+        <label style={labelStyle}>{field.label}</label>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          {field.options.map(o => (
+            <button key={o} onClick={() => toggle(o)}
+              style={{
+                padding: "5px 12px", fontSize: 12, borderRadius: 20, cursor: "pointer",
+                border: `1px solid ${selected.includes(o) ? "var(--accent)" : "var(--border)"}`,
+                background: selected.includes(o) ? "var(--accent-dim)" : "var(--bg-secondary)",
+                color: selected.includes(o) ? "var(--accent)" : "var(--text-secondary)",
+              }}>{o}</button>
+          ))}
+        </div>
+      </>
+    );
+  }
+
+  return (
+    <>
+      <label style={labelStyle}>{field.label}</label>
+      <input
+        style={inputStyle}
+        type={field.type === "number" ? "number" : field.type === "date" ? "date" : "text"}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+      />
+    </>
   );
 }
 

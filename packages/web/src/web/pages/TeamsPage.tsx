@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
 import { playerWord } from "../lib/gender";
 import { authFetch } from "../lib/authFetch";
+import { PlayerFormSetup } from "../components/PlayerFormSetup";
 
 const PRESET_COLORS = [
   "#FF6B35", "#F5A623", "#FF453A", "#FF9500",
@@ -80,8 +81,6 @@ export default function TeamsPage() {
   const [joinError, setJoinError] = useState("");
   const [membersTeamId, setMembersTeamId] = useState<number | null>(null);
   const [importTeamId, setImportTeamId] = useState<number | null>(null);
-  const [copiedImportUrl, setCopiedImportUrl] = useState(false);
-  const [showFullImportUrl, setShowFullImportUrl] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data, isLoading } = useQuery({
@@ -214,45 +213,7 @@ export default function TeamsPage() {
 
   const teams = data?.teams ?? [];
   const importTeam = teams.find((t: any) => t.id === importTeamId);
-  const importUrl = importTeam ? `${window.location.origin}/api/players/import/${importTeam.importToken}` : "";
 
-  const copyImportUrl = () => {
-    navigator.clipboard.writeText(importUrl);
-    setCopiedImportUrl(true);
-    setTimeout(() => setCopiedImportUrl(false), 2000);
-  };
-
-  const APPS_SCRIPT_TEMPLATE = `function onFormSubmit(e) {
-  var IMPORT_URL = "${importUrl || "PEGA_AQUI_LA_URL_DE_IMPORTACION"}";
-
-  // Mapea el título EXACTO de cada pregunta del Form a su valor de respuesta
-  var responses = e.namedValues; // { "Pregunta": ["respuesta"] }
-  function get(question) {
-    var v = responses[question];
-    return v ? v[0] : "";
-  }
-
-  var payload = {
-    name: get("Nombre y apellidos"),
-    number: get("Dorsal"),
-    birthDate: get("Fecha de nacimiento"),
-    positions: get("Posición"), // checkboxes -> vienen separadas por coma
-    height: get("Altura (cm)"),
-    weight: get("Peso (kg)"),
-    wingspan: get("Envergadura (cm)"),
-    chronicDiseases: get("Enfermedades crónicas"),
-    previousInjuries: get("Lesiones previas"),
-    allergies: get("Alergias / Intolerancias"),
-    notes: get("Notas adicionales"),
-  };
-
-  UrlFetchApp.fetch(IMPORT_URL, {
-    method: "post",
-    contentType: "application/json",
-    payload: JSON.stringify(payload),
-    muteHttpExceptions: true,
-  });
-}`;
 
   const openEditTeam = (team: any) => {
     setEditTeamId(team.id);
@@ -289,84 +250,15 @@ export default function TeamsPage() {
         </button>
       </div>
 
-      {/* ── Import form modal ── */}
+      {/* ── Configuración de campos + Google Form ── */}
       {importTeamId !== null && importTeam && (
-        <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.8)", display: "flex", alignItems: "flex-end", justifyContent: "center", zIndex: 1000 }}>
-          <div className="card fade-in" style={{ padding: 24, width: "100%", maxWidth: 560, borderRadius: "20px 20px 0 0", maxHeight: "85vh", overflowY: "auto" }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-              <h2 style={{ fontSize: 17, fontWeight: 700 }}>Rellenar fichas con Google Forms</h2>
-              <button onClick={() => setImportTeamId(null)} style={{ background: "transparent", border: "none", color: "var(--text-secondary)", cursor: "pointer", fontSize: 20 }}>✕</button>
-            </div>
-            <p style={{ fontSize: 12, color: "var(--text-secondary)", marginBottom: 20 }}>
-              {importTeam.name} · cada respuesta del formulario crea o actualiza automáticamente la ficha de {playerWord(importTeam.gender, false)} con ese nombre
-            </p>
-
-            {/* Step 1 */}
-            <p style={{ ...labelStyle, marginTop: 0 }}>1. Crea un Google Form con estas preguntas exactas</p>
-            <div className="card" style={{ padding: "12px 14px", background: "var(--bg-secondary)", fontSize: 12.5, lineHeight: 1.9, color: "var(--text-secondary)" }}>
-              <div>• <strong style={{ color: "var(--text-primary)" }}>Nombre y apellidos</strong> — respuesta corta</div>
-              <div>• <strong style={{ color: "var(--text-primary)" }}>Dorsal</strong> — respuesta corta (número)</div>
-              <div>• <strong style={{ color: "var(--text-primary)" }}>Fecha de nacimiento</strong> — fecha</div>
-              <div>• <strong style={{ color: "var(--text-primary)" }}>Posición</strong> — casillas (una o varias)</div>
-              <div>• <strong style={{ color: "var(--text-primary)" }}>Altura (cm)</strong> — respuesta corta</div>
-              <div>• <strong style={{ color: "var(--text-primary)" }}>Peso (kg)</strong> — respuesta corta</div>
-              <div>• <strong style={{ color: "var(--text-primary)" }}>Envergadura (cm)</strong> — respuesta corta</div>
-              <div>• <strong style={{ color: "var(--text-primary)" }}>Enfermedades crónicas</strong> — párrafo</div>
-              <div>• <strong style={{ color: "var(--text-primary)" }}>Lesiones previas</strong> — párrafo</div>
-              <div>• <strong style={{ color: "var(--text-primary)" }}>Alergias / Intolerancias</strong> — párrafo</div>
-              <div>• <strong style={{ color: "var(--text-primary)" }}>Notas adicionales</strong> — párrafo</div>
-            </div>
-            <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.6 }}>
-              El título de cada pregunta debe coincidir exactamente (mayúsculas y tildes incluidas) para que el script las reconozca.
-            </p>
-
-            {/* Step 2 */}
-            <p style={labelStyle}>2. Copia tu enlace de importación (único para este equipo)</p>
-            <div style={{ display: "flex", gap: 8 }}>
-              <input
-                readOnly
-                type={showFullImportUrl ? "text" : "password"}
-                value={importUrl}
-                style={{ fontSize: 11, fontFamily: "monospace" }}
-                onFocus={e => showFullImportUrl && e.target.select()}
-              />
-              <button className="btn-ghost" onClick={() => setShowFullImportUrl(v => !v)} style={{ flexShrink: 0 }}>
-                {showFullImportUrl ? "Ocultar" : "Ver"}
-              </button>
-              <button className="btn-ghost" onClick={copyImportUrl} style={{ flexShrink: 0, whiteSpace: "nowrap" }}>
-                {copiedImportUrl ? "✓ Copiado" : "Copiar"}
-              </button>
-            </div>
-            <button
-              onClick={() => { if (confirm("Esto invalidará el enlace anterior. ¿Continuar?")) regenerateImportToken.mutate(importTeam.id); }}
-              disabled={regenerateImportToken.isPending}
-              style={{ marginTop: 8, fontSize: 11.5, background: "transparent", border: "none", color: "var(--text-muted)", cursor: "pointer", textDecoration: "underline", padding: 0 }}>
-              {regenerateImportToken.isPending ? "Regenerando..." : "Regenerar enlace (invalida el anterior)"}
-            </button>
-
-            {/* Step 3 */}
-            <p style={labelStyle}>3. En las respuestas del formulario, abre Extensiones → Apps Script y pega esto</p>
-            <div style={{ position: "relative" }}>
-              <pre style={{
-                background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: 10,
-                padding: 14, fontSize: 10.5, lineHeight: 1.6, overflowX: "auto", color: "var(--text-secondary)",
-                fontFamily: "monospace", whiteSpace: "pre",
-              }}>{APPS_SCRIPT_TEMPLATE}</pre>
-              <button
-                onClick={() => navigator.clipboard.writeText(APPS_SCRIPT_TEMPLATE)}
-                style={{ position: "absolute", top: 8, right: 8, fontSize: 11, padding: "4px 10px", background: "var(--bg-card)", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--text-secondary)" }}>
-                Copiar
-              </button>
-            </div>
-            <p style={{ fontSize: 11.5, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.6 }}>
-              Luego, en el editor de Apps Script: reloj (Activadores) → Añadir activador → función <strong>onFormSubmit</strong>, evento <strong>Al enviarse el formulario</strong>. Guarda y autoriza el acceso.
-            </p>
-
-            <div style={{ display: "flex", marginTop: 20 }}>
-              <button className="btn-ghost" onClick={() => setImportTeamId(null)} style={{ flex: 1, justifyContent: "center" }}>Cerrar</button>
-            </div>
-          </div>
-        </div>
+        <PlayerFormSetup
+          team={importTeam}
+          teams={teams}
+          onClose={() => setImportTeamId(null)}
+          onRegenerateToken={() => regenerateImportToken.mutate(importTeam.id)}
+          regenerating={regenerateImportToken.isPending}
+        />
       )}
 
       {/* ── Members modal ── */}

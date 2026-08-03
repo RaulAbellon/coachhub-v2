@@ -7,6 +7,7 @@ import { auth } from "./routes/auth";
 import { players as playersRoutes, incidents as incidentsRoutes, injuries as injuriesRoutes } from "./routes/players";
 import { attendanceRoutes } from "./routes/attendance";
 import { annotationsRoutes } from "./routes/annotations";
+import { formFields } from "./routes/form-fields";
 
 // Orígenes permitidos para la API. En producción, el dominio publicado en
 // Runable (o uno propio) debe fijarse via CORS_ALLOWED_ORIGIN. Ver F-0002 en
@@ -41,7 +42,8 @@ const app = new Hono()
   .route("/incidents", incidentsRoutes)
   .route("/injuries", injuriesRoutes)
   .route("/attendance", attendanceRoutes)
-  .route("/annotations", annotationsRoutes);
+  .route("/annotations", annotationsRoutes)
+  .route("/form-fields", formFields);
 
 export type AppType = typeof app;
 export default app;

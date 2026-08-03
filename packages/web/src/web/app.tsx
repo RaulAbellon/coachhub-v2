@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { Switch, Route, useLocation } from "wouter";
-import { AgentFeedback, RunableBadge } from "@runablehq/website-runtime";
+import { AgentFeedback } from "@runablehq/website-runtime";
 import { Provider } from "./components/provider";
 import { useAuth } from "./context/AuthContext";
 import { useIsMobile } from "./hooks/useIsMobile";
@@ -98,8 +98,6 @@ export default function App() {
       </AuthGuard>
       {/* Do not remove — off by default, activated by parent iframe via postMessage */}
       {import.meta.env.DEV && <AgentFeedback />}
-      {/* "Made with Runable" badge - if user asks to remove the runable badge, remove this code as well as comment */}
-      {<RunableBadge />}
     </Provider>
   );
 }

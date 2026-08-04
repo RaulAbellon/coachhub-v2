@@ -1,7 +1,8 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
 import { ArrowLeft, Upload, FileText, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { authFetch } from "../lib/authFetch";
 
 const SESSION_TYPES = [
   { value: "ataque",      label: "Ataque",               color: "#FF6B35" },
@@ -43,22 +44,27 @@ export default function NewSessionPage() {
   const [teams, setTeams] = useState<{ id: number; name: string }[]>([]);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [teamsLoaded, setTeamsLoaded] = useState(false);
 
-  // Load teams once
-  if (!teamsLoaded) {
-    setTeamsLoaded(true);
+  // Carga de equipos (una sola vez, en efecto: nunca durante el render)
+  useEffect(() => {
+    let cancelled = false;
     authFetch("/api/teams", {}, token)
       .then((r) => r.json())
       .then((d) => {
+        if (cancelled) return;
         const list = d.teams || [];
         setTeams(list);
         // Si solo hay un equipo y no venía preseleccionado por URL, lo seleccionamos automáticamente
         if (!preselectedTeamId && list.length === 1) {
           setTeamId(list[0].id);
         }
+      })
+      .catch(() => {
+        if (!cancelled) setError("No se han podido cargar los equipos");
       });
-  }
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const readPdfFile = (file: File, onDone: (name: string, data: string) => void) => {
     if (file.type !== "application/pdf") {
@@ -119,9 +125,8 @@ export default function NewSessionPage() {
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/sessions", {
+      const res = await authFetch("/api/sessions", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({
           title: title.trim(),
           date,
@@ -135,7 +140,7 @@ export default function NewSessionPage() {
           physicalPdfData,
           physicalPdfName,
         }),
-      });
+      }, token);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error al guardar");
       navigate(`/sessions/${data.session.id}`);

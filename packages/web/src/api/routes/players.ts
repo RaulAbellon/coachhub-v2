@@ -525,6 +525,8 @@ export const injuries = new Hono()
     if (!injury) return c.json({ error: "No encontrada" }, 404);
 
     const [player] = await db.select().from(schema.players).where(eq(schema.players.id, injury.playerId));
+    // F-0070: la jugadora puede haber sido borrada; sin null-check esto era un 500.
+    if (!player) return c.json({ error: "Jugadora no encontrada" }, 404);
     const membership = await getMembership(user.userId, player.teamId);
     if (!membership || membership.role === "viewer") return c.json({ error: "Sin permiso" }, 403);
 
@@ -553,6 +555,8 @@ export const injuries = new Hono()
     if (!injury) return c.json({ error: "No encontrada" }, 404);
 
     const [player] = await db.select().from(schema.players).where(eq(schema.players.id, injury.playerId));
+    // F-0070: la jugadora puede haber sido borrada; sin null-check esto era un 500.
+    if (!player) return c.json({ error: "Jugadora no encontrada" }, 404);
     const membership = await getMembership(user.userId, player.teamId);
     if (!membership || membership.role === "viewer") return c.json({ error: "Sin permiso" }, 403);
 
@@ -612,6 +616,8 @@ export const incidents = new Hono()
     if (!incident) return c.json({ error: "No encontrada" }, 404);
 
     const [player] = await db.select().from(schema.players).where(eq(schema.players.id, incident.playerId));
+    // F-0070: la jugadora puede haber sido borrada; sin null-check esto era un 500.
+    if (!player) return c.json({ error: "Jugadora no encontrada" }, 404);
     const membership = await getMembership(user.userId, player.teamId);
     if (!membership || membership.role === "viewer") return c.json({ error: "Sin permiso" }, 403);
 
@@ -634,6 +640,8 @@ export const incidents = new Hono()
     if (!incident) return c.json({ error: "No encontrada" }, 404);
 
     const [player] = await db.select().from(schema.players).where(eq(schema.players.id, incident.playerId));
+    // F-0070: la jugadora puede haber sido borrada; sin null-check esto era un 500.
+    if (!player) return c.json({ error: "Jugadora no encontrada" }, 404);
     const membership = await getMembership(user.userId, player.teamId);
     if (!membership || membership.role === "viewer") return c.json({ error: "Sin permiso" }, 403);
 

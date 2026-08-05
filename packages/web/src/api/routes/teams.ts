@@ -129,8 +129,12 @@ export const teams = new Hono()
     if (!["editor", "viewer"].includes(role)) return c.json({ error: "Rol no válido" }, 400);
 
     // No permitir cambiar el rol del owner
-    const [target] = await db.select().from(schema.teamMembers).where(eq(schema.teamMembers.id, memberId));
-    if (!target || target.role === "owner") return c.json({ error: "No puedes cambiar el rol del owner" }, 400);
+    // El miembro debe pertenecer a ESTE equipo (F-0065: evita cambiar roles de
+    // otros equipos pasando un memberId ajeno).
+    const [target] = await db.select().from(schema.teamMembers)
+      .where(and(eq(schema.teamMembers.id, memberId), eq(schema.teamMembers.teamId, teamId)));
+    if (!target) return c.json({ error: "Miembro no encontrado en este equipo" }, 404);
+    if (target.role === "owner") return c.json({ error: "No puedes cambiar el rol del owner" }, 400);
 
     const [updated] = await db.update(schema.teamMembers)
       .set({ role })
@@ -150,8 +154,12 @@ export const teams = new Hono()
       .where(and(eq(schema.teamMembers.teamId, teamId), eq(schema.teamMembers.userId, user.userId)));
     if (!myMembership || myMembership.role !== "owner") return c.json({ error: "Solo el owner puede eliminar miembros" }, 403);
 
-    const [target] = await db.select().from(schema.teamMembers).where(eq(schema.teamMembers.id, memberId));
-    if (!target || target.role === "owner") return c.json({ error: "No puedes eliminar al owner" }, 400);
+    // El miembro debe pertenecer a ESTE equipo (F-0066: evita eliminar miembros
+    // de otros equipos pasando un memberId ajeno).
+    const [target] = await db.select().from(schema.teamMembers)
+      .where(and(eq(schema.teamMembers.id, memberId), eq(schema.teamMembers.teamId, teamId)));
+    if (!target) return c.json({ error: "Miembro no encontrado en este equipo" }, 404);
+    if (target.role === "owner") return c.json({ error: "No puedes eliminar al owner" }, 400);
 
     await db.delete(schema.teamMembers).where(eq(schema.teamMembers.id, memberId));
     return c.json({ ok: true });
@@ -216,13 +224,25 @@ export const teams = new Hono()
       await db.delete(schema.annotations).where(inArray(schema.annotations.sessionId, sessionIds));
       await db.delete(schema.attendance).where(inArray(schema.attendance.sessionId, sessionIds));
     }
+    const teamMatches = await db.select({ id: schema.matches.id }).from(schema.matches)
+      .where(eq(schema.matches.teamId, teamId));
+    const matchIds = teamMatches.map(m => m.id);
+
+    if (matchIds.length > 0) {
+      await db.delete(schema.matchCallups).where(inArray(schema.matchCallups.matchId, matchIds));
+      await db.delete(schema.matchDocuments).where(inArray(schema.matchDocuments.matchId, matchIds));
+    }
     if (playerIds.length > 0) {
       await db.delete(schema.attendance).where(inArray(schema.attendance.playerId, playerIds));
       await db.delete(schema.playerInjuries).where(inArray(schema.playerInjuries.playerId, playerIds));
       await db.delete(schema.playerIncidents).where(inArray(schema.playerIncidents.playerId, playerIds));
+      await db.delete(schema.matchCallups).where(inArray(schema.matchCallups.playerId, playerIds));
+      await db.delete(schema.playerCustomValues).where(inArray(schema.playerCustomValues.playerId, playerIds));
     }
+    await db.delete(schema.matches).where(eq(schema.matches.teamId, teamId));
     await db.delete(schema.players).where(eq(schema.players.teamId, teamId));
     await db.delete(schema.sessions).where(eq(schema.sessions.teamId, teamId));
+    await db.delete(schema.teamFormFields).where(eq(schema.teamFormFields.teamId, teamId));
     await db.delete(schema.teamMembers).where(eq(schema.teamMembers.teamId, teamId));
     await db.delete(schema.teams).where(eq(schema.teams.id, teamId));
 

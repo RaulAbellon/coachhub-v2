@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { ArrowLeft, Trash2, Download, MapPin, Clock, Users, FileText, Upload } from "lucide-react";
 import { jsPDF } from "jspdf";
 import { useAuth } from "../context/AuthContext";
+import { authFetch } from "../lib/authFetch";
 import { ADDITIONAL_COLOR } from "../lib/additional";
 import { AdditionalBadge } from "../components/AdditionalBadge";
 
@@ -48,12 +49,10 @@ export default function MatchPage({ id }: { id: string }) {
   const { user, token } = useAuth();
   const qc = useQueryClient();
 
-  const authHeaders = token ? { Authorization: `Bearer ${token}` } : {};
-
-  const { data, isLoading } = useQuery({
+    const { data, isLoading } = useQuery({
     queryKey: ["match", matchId],
     queryFn: async () => {
-      const res = await fetch(`/api/matches/${matchId}`, { headers: authHeaders });
+      const res = await authFetch(`/api/matches/${matchId}`, {}, token);
       if (!res.ok) throw new Error("No encontrado");
       return res.json() as Promise<{ match: Match; callups: Callup[]; documents: MatchDocument[]; role: string }>;
     },
@@ -63,7 +62,7 @@ export default function MatchPage({ id }: { id: string }) {
   const { data: teamsData } = useQuery({
     queryKey: ["teams"],
     queryFn: async () => {
-      const res = await fetch("/api/teams", { headers: authHeaders });
+      const res = await authFetch("/api/teams", {}, token);
       return res.json();
     },
     enabled: !!user,
@@ -99,21 +98,19 @@ export default function MatchPage({ id }: { id: string }) {
       if (!old) return old;
       return { ...old, callups: old.callups.map((c: Callup) => c.playerId === playerId ? { ...c, called } : c) };
     });
-    await fetch(`/api/matches/${matchId}/callups/${playerId}`, {
+    await authFetch(`/api/matches/${matchId}/callups/${playerId}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify({ called }),
-    });
+    }, token);
     qc.invalidateQueries({ queryKey: ["match", matchId] });
   };
 
   const saveResult = async () => {
     setSavingResult(true);
-    await fetch(`/api/matches/${matchId}`, {
+    await authFetch(`/api/matches/${matchId}`, {
       method: "PUT",
-      headers: { "Content-Type": "application/json", ...authHeaders },
       body: JSON.stringify({ goalsFor: gf === "" ? null : Number(gf), goalsAgainst: ga === "" ? null : Number(ga) }),
-    });
+    }, token);
     await qc.invalidateQueries({ queryKey: ["match", matchId] });
     await qc.invalidateQueries({ queryKey: ["matches"] });
     await qc.invalidateQueries({ queryKey: ["matches-all"] });
@@ -133,11 +130,10 @@ export default function MatchPage({ id }: { id: string }) {
         reader.onerror = reject;
         reader.readAsDataURL(file);
       });
-      const res = await fetch(`/api/matches/${matchId}/documents`, {
+      const res = await authFetch(`/api/matches/${matchId}/documents`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...authHeaders },
         body: JSON.stringify({ name: file.name, pdfData }),
-      });
+      }, token);
       if (!res.ok) {
         const j = await res.json().catch(() => ({}));
         setDocError(j.error || "No se pudo subir el PDF.");
@@ -152,7 +148,7 @@ export default function MatchPage({ id }: { id: string }) {
   const openDoc = async (docId: number) => {
     setOpeningDocId(docId);
     try {
-      const res = await fetch(`/api/matches/${matchId}/documents/${docId}`, { headers: authHeaders });
+      const res = await authFetch(`/api/matches/${matchId}/documents/${docId}`, {}, token);
       if (!res.ok) { setDocError("No se pudo abrir el PDF."); return; }
       const { document: doc } = await res.json();
       // Convertir data-url a blob y abrir en pestaña nueva
@@ -167,13 +163,13 @@ export default function MatchPage({ id }: { id: string }) {
   };
 
   const deleteDoc = async (docId: number) => {
-    await fetch(`/api/matches/${matchId}/documents/${docId}`, { method: "DELETE", headers: authHeaders });
+    await authFetch(`/api/matches/${matchId}/documents/${docId}`, { method: "DELETE" }, token);
     await qc.invalidateQueries({ queryKey: ["match", matchId] });
   };
 
   const handleDelete = async () => {
     setDeleting(true);
-    const res = await fetch(`/api/matches/${matchId}`, { method: "DELETE", headers: authHeaders });
+    const res = await authFetch(`/api/matches/${matchId}`, { method: "DELETE" }, token);
     if (res.ok) {
       qc.invalidateQueries({ queryKey: ["matches"] });
       qc.invalidateQueries({ queryKey: ["matches-all"] });

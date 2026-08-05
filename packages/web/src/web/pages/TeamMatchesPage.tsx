@@ -2,6 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { MapPin, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { authFetch } from "../lib/authFetch";
 
 function hexToRgba(hex: string, alpha: number) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -76,7 +77,7 @@ export default function TeamMatchesPage() {
   const { data: teamsData } = useQuery({
     queryKey: ["teams"],
     queryFn: async () => {
-      const res = await fetch("/api/teams", { headers: token ? { Authorization: `Bearer ${token}` } : {} });
+      const res = await authFetch("/api/teams", {}, token);
       return res.json();
     },
     enabled: !!user,
@@ -85,9 +86,7 @@ export default function TeamMatchesPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["matches", teamId],
     queryFn: async () => {
-      const res = await fetch(`/api/matches?teamId=${teamId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch(`/api/matches?teamId=${teamId}`, {}, token);
       return res.json() as Promise<{ matches: Match[] }>;
     },
     enabled: !!user && !!teamId,

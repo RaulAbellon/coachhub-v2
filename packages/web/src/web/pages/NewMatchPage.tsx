@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
+import { authFetch } from "../lib/authFetch";
 
 export default function NewMatchPage() {
   const [, navigate] = useLocation();
@@ -21,31 +22,34 @@ export default function NewMatchPage() {
   const [venue, setVenue] = useState("");
   const [notes, setNotes] = useState("");
   const [teams, setTeams] = useState<{ id: number; name: string; role?: string }[]>([]);
-  const [teamsLoaded, setTeamsLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  if (!teamsLoaded) {
-    setTeamsLoaded(true);
-    fetch("/api/teams", { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  // Carga de equipos (una sola vez, en efecto: nunca durante el render)
+  useEffect(() => {
+    let cancelled = false;
+    authFetch("/api/teams", {}, token)
       .then((r) => r.json())
       .then((d) => {
+        if (cancelled) return;
         const list = (d.teams || []).filter((t: any) => t.role === "owner" || t.role === "editor");
         setTeams(list);
         if (!preTeamId && list.length === 1) setTeamId(list[0].id);
-      });
-  }
+      })
+      .catch(() => { if (!cancelled) setError("No se han podido cargar los equipos"); });
+    return () => { cancelled = true; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleSave = async () => {
     if (!teamId) { setError("Debes seleccionar un equipo"); return; }
     setSaving(true);
     setError("");
     try {
-      const res = await fetch("/api/matches", {
+      const res = await authFetch("/api/matches", {
         method: "POST",
-        headers: { "Content-Type": "application/json", ...(token ? { Authorization: `Bearer ${token}` } : {}) },
         body: JSON.stringify({ teamId, date, time, meetingTime, opponent: opponent.trim(), homeAway, venue: venue.trim(), notes }),
-      });
+      }, token);
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Error al guardar");
       navigate(`/matches/${data.match.id}`);

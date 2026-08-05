@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { useAuth } from "../context/AuthContext";
+import { authFetch } from "../lib/authFetch";
 
 const SESSION_TYPES = [
   { key: "ataque",      label: "Ataque",               color: "#FF6B35" },
@@ -41,9 +42,7 @@ export default function TeamSessionsPage() {
   const { data: teamsData } = useQuery({
     queryKey: ["teams"],
     queryFn: async () => {
-      const res = await fetch("/api/teams", {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch("/api/teams", {}, token);
       return res.json();
     },
     enabled: !!user,
@@ -53,9 +52,7 @@ export default function TeamSessionsPage() {
   const { data, isLoading } = useQuery({
     queryKey: ["sessions", teamId],
     queryFn: async () => {
-      const res = await fetch(`/api/sessions?teamId=${teamId}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch(`/api/sessions?teamId=${teamId}`, {}, token);
       return res.json() as Promise<{ sessions: Session[] }>;
     },
     enabled: !!user && !!teamId,

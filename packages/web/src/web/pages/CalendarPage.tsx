@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
+import { authFetch } from "../lib/authFetch";
 import { useIsMobile } from "../hooks/useIsMobile";
 
 const DAYS_DESKTOP = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
@@ -79,9 +80,7 @@ export default function CalendarPage() {
   const { data } = useQuery({
     queryKey: ["sessions-all", monthStr],
     queryFn: async () => {
-      const res = await fetch(`/api/sessions/all-teams?month=${monthStr}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch(`/api/sessions/all-teams?month=${monthStr}`, {}, token);
       return res.json() as Promise<{ sessions: Session[]; teams: Team[] }>;
     },
     enabled: !!user,
@@ -90,9 +89,7 @@ export default function CalendarPage() {
   const { data: matchesData } = useQuery({
     queryKey: ["matches-all", monthStr],
     queryFn: async () => {
-      const res = await fetch(`/api/matches/all-teams?month=${monthStr}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      });
+      const res = await authFetch(`/api/matches/all-teams?month=${monthStr}`, {}, token);
       return res.json() as Promise<{ matches: Match[] }>;
     },
     enabled: !!user,

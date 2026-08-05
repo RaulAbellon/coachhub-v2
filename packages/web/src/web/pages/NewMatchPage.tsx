@@ -22,6 +22,9 @@ export default function NewMatchPage() {
   const [venue, setVenue] = useState("");
   const [notes, setNotes] = useState("");
   const [teams, setTeams] = useState<{ id: number; name: string; role?: string }[]>([]);
+  // true cuando la petición de equipos ya ha terminado (para no mostrar
+  // "no tienes equipos" mientras aún se están cargando).
+  const [teamsLoaded, setTeamsLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -32,11 +35,12 @@ export default function NewMatchPage() {
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;
+        setTeamsLoaded(true);
         const list = (d.teams || []).filter((t: any) => t.role === "owner" || t.role === "editor");
         setTeams(list);
         if (!preTeamId && list.length === 1) setTeamId(list[0].id);
       })
-      .catch(() => { if (!cancelled) setError("No se han podido cargar los equipos"); });
+      .catch(() => { if (!cancelled) { setTeamsLoaded(true); setError("No se han podido cargar los equipos"); } });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -66,7 +70,7 @@ export default function NewMatchPage() {
   return (
     <div className="min-h-screen" style={{ background: "#0D1117", color: "#E6EDF3" }}>
       <div className="flex items-center gap-4 px-6 py-4 border-b" style={{ borderColor: "#30363D" }}>
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-sm transition-opacity hover:opacity-70" style={{ color: "#8B8B9B" }}>
+        <button onClick={() => window.history.back()} className="flex items-center gap-2 text-sm transition-opacity hover:opacity-70" style={{ color: "#8B8B9B" }}>
           <ArrowLeft size={18} /> Volver
         </button>
         <h1 className="text-lg font-semibold tracking-wide uppercase">Nuevo Partido</h1>

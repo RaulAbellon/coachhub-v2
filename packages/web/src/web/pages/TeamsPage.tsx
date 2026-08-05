@@ -143,7 +143,6 @@ export default function TeamsPage() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["teams"] });
-      setCopiedImportUrl(false);
     },
   });
 
@@ -542,7 +541,7 @@ export default function TeamsPage() {
                   </button>
                 )}
                 {(team.role === "owner" || team.role === "editor") && (
-                  <button className="btn-ghost" onClick={() => { setImportTeamId(team.id); setCopiedImportUrl(false); }}
+                  <button className="btn-ghost" onClick={() => setImportTeamId(team.id)}
                     style={{ flex: "1 1 auto", minWidth: 110, fontSize: 13, padding: "8px 12px", justifyContent: "center" }}>
                     Formulario
                   </button>

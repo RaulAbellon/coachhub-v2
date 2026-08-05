@@ -42,6 +42,9 @@ export default function NewSessionPage() {
   const [physicalPdfData, setPhysicalPdfData] = useState<string>("");
   const [physicalPdfName, setPhysicalPdfName] = useState<string>("");
   const [teams, setTeams] = useState<{ id: number; name: string }[]>([]);
+  // true cuando la petición de equipos ya ha terminado (para no mostrar
+  // "no tienes equipos" mientras aún se están cargando).
+  const [teamsLoaded, setTeamsLoaded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -52,6 +55,7 @@ export default function NewSessionPage() {
       .then((r) => r.json())
       .then((d) => {
         if (cancelled) return;
+        setTeamsLoaded(true);
         const list = d.teams || [];
         setTeams(list);
         // Si solo hay un equipo y no venía preseleccionado por URL, lo seleccionamos automáticamente
@@ -60,7 +64,7 @@ export default function NewSessionPage() {
         }
       })
       .catch(() => {
-        if (!cancelled) setError("No se han podido cargar los equipos");
+        if (!cancelled) { setTeamsLoaded(true); setError("No se han podido cargar los equipos"); }
       });
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -161,7 +165,7 @@ export default function NewSessionPage() {
       {/* Header */}
       <div className="flex items-center gap-4 px-6 py-4 border-b" style={{ borderColor: "#30363D" }}>
         <button
-          onClick={() => navigate(-1)}
+          onClick={() => window.history.back()}
           className="flex items-center gap-2 text-sm transition-opacity hover:opacity-70"
           style={{ color: "#8B8B9B" }}
         >

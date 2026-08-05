@@ -466,7 +466,7 @@ export default function CalendarPage() {
                     /* MOBILE: colored dots (matches = square, sessions = circle) */
                     (daySessions.length > 0 || dayMatches.length > 0) && (
                       <div style={{ display: "flex", gap: 3, justifyContent: "center", flexWrap: "wrap", maxWidth: "100%", paddingBottom: 2 }}>
-                        {dayMatches.slice(0, 2).map((m, idx) => (
+                        {dayMatches.slice(0, 2).map((_m, idx) => (
                           <div key={`m${idx}`} style={{
                             width: 6, height: 6, borderRadius: 1.5,
                             background: "var(--accent)",

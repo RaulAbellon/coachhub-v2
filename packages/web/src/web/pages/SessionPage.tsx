@@ -630,9 +630,24 @@ export default function SessionPage({ id }: { id?: string }) {
           {annotations.map((note: any) => (
             <div key={note.id} style={{ padding: "10px 12px", borderRadius: 8, background: "var(--bg-secondary)", border: "1px solid var(--border)", overflow: "hidden", minWidth: 0, boxSizing: "border-box", width: "100%" }}>
               <p style={{ fontSize: 13, lineHeight: 1.6, color: "var(--text-primary)", whiteSpace: "pre-wrap", margin: 0, wordBreak: "break-word" }}>{note.content}</p>
-              <span style={{ fontSize: 11, color: "var(--text-secondary)", display: "block", marginTop: 6 }}>
-                {new Date(note.createdAt).toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
-              </span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 6 }}>
+                <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>
+                  {new Date(note.createdAt).toLocaleString("es-ES", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                </span>
+                {canEdit && (
+                  <button
+                    onClick={() => deleteAnnotation.mutate(note.id)}
+                    disabled={deleteAnnotation.isPending}
+                    title="Eliminar anotación"
+                    style={{
+                      marginLeft: "auto", background: "none", border: "none", cursor: "pointer",
+                      color: "var(--text-secondary)", fontSize: 11, padding: "2px 4px",
+                    }}
+                  >
+                    Eliminar
+                  </button>
+                )}
+              </div>
             </div>
           ))}
         </div>

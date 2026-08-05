@@ -81,3 +81,43 @@ Decisiones: IDs autoincrement; mapeo Google Form -> campo en backend por etiquet
 - [ ] avisar usuario -> publicar
 
 Aplazado: ZIP por lotes de PDFs (JSZip).
+
+## [2026-08-05] Fix pantalla en negro al crear sesión / partido
+IMPORTANTE (lección): `bunx tsc --noEmit` en packages/web da VERDE EN FALSO — el
+tsconfig raíz tiene `files: []` y solo referencias de proyecto, así que no
+comprueba ningún archivo. Usar SIEMPRE `bunx tsc -b --force` desde packages/web.
+
+- [x] Causa raíz: `teamsLoaded` seguía usado en el JSX de NewSessionPage y
+      NewMatchPage después de quitar el estado -> ReferenceError al montar ->
+      React desmonta el árbol -> pantalla negra. Restaurado como flag de "carga
+      terminada" (se pone a true al resolver o fallar la petición de equipos).
+- [x] `authFetch` no importado en NewSessionPage (primer síntoma) + POST de
+      sesión pasado a authFetch.
+- [x] Carga de equipos movida de render a useEffect (NewSessionPage y NewMatchPage).
+- [x] `navigate(-1)` no existe en wouter -> el botón "Volver" no hacía nada.
+      Cambiado a `window.history.back()` en ambas páginas.
+- [x] TeamsPage: restos de `setCopiedImportUrl` (borrado al migrar al modal
+      PlayerFormSetup) -> ReferenceError al pulsar "Formulario". Eliminados.
+- [x] Limpieza del resto de errores de tsc -b: JSX.Element -> React.ReactElement
+      (BottomNav), HandballIcon exportado (Sidebar), `_m` (CalendarPage),
+      isYes/onClose sin usar (PlayersPage), queries/ping.ts borrado (resto de
+      plantilla, importaba `orpc` inexistente).
+- [x] SessionPage: botón "Eliminar" en cada anotación (solo owner/editor) — la
+      mutación deleteAnnotation existía pero no estaba cableada a la UI.
+- [x] Verificado con Playwright (chrome del sandbox): login, /sessions/new,
+      /matches/new, /calendar, /teams, /profile todas renderizan; sesión creada
+      de verdad y redirige a /sessions/:id. 0 errores JS (salvo los 401 de
+      /api/auth/me previos al login, esperados).
+- [x] tsc -b limpio, build OK, vitest 16/16. Datos de prueba borrados
+      (scripts/cleanup_test.mjs) -> queda 1 usuario / 1 equipo.
+- [ ] avisar usuario -> publicar
+
+## Auditoría v3 — hallazgos cerrados
+- [x] F-0033 authFetch en CalendarPage, TeamSessionsPage, TeamMatchesPage,
+      NewMatchPage, MatchPage, NewSessionPage (ya no queda ningún fetch crudo
+      autenticado en el frontend)
+- [x] F-0064 cascada al borrar equipo: matches, match_callups, match_documents,
+      player_custom_values, team_form_fields
+- [x] F-0065 / F-0066 validar teamId al cambiar rol y al eliminar miembro (IDOR)
+- [x] F-0070 null-check de jugadora en PUT/DELETE de lesiones e incidencias
+- [x] F-LIVE-002 revisado: /api/auth/me ya se llamaba solo una vez (AuthProvider)

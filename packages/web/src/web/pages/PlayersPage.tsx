@@ -1037,7 +1037,6 @@ function CustomFieldInput({ field, value, onChange }: {
   }
 
   if (field.type === "boolean") {
-    const isYes = value === "true";
     return (
       <>
         <label style={labelStyle}>{field.label}</label>
@@ -1239,7 +1238,7 @@ function SmallBadge({ children }: { children: React.ReactNode }) {
   );
 }
 
-function Modal({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+function Modal({ children }: { children: React.ReactNode; onClose: () => void }) {
   return (
     <div style={{ position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 1000, backdropFilter: "blur(4px)" }}>
       <div className="card fade-in" style={{ padding: 28, maxWidth: 540, width: "90%", maxHeight: "90vh", overflowY: "auto" }}>

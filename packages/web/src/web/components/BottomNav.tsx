@@ -47,7 +47,7 @@ export default function BottomNav() {
   const isMobile = useIsMobile();
   if (!isMobile) return null;
 
-  const NavLink = ({ item }: { item: { path: string; label: string; icon: JSX.Element } }) => {
+  const NavLink = ({ item }: { item: { path: string; label: string; icon: React.ReactElement } }) => {
     const isActive = location === item.path;
     return (
       <Link key={item.path} href={item.path} style={{ flex: 1, display: "flex", textDecoration: "none" }}>

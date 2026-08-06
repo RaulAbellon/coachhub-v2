@@ -28,22 +28,27 @@ if (!url) {
 
 const client = createClient({ url, authToken });
 
-const TABLES = [
-  "users",
-  "password_reset_tokens",
-  "teams",
-  "team_members",
-  "sessions",
-  "annotations",
-  "players",
-  "player_injuries",
-  "player_incidents",
-  "attendance",
-  "matches",
-  "match_callups",
-  "match_documents",
-  // auth_tokens NO se incluye a propósito: son sesiones temporales, no datos reales.
-];
+// Tablas: se descubren automáticamente del propio SQLite para que el backup no
+// se quede desfasado cuando se añaden tablas nuevas al esquema.
+const EXCLUDED = new Set([
+  "auth_tokens",       // sesiones temporales, no son datos reales
+  "__drizzle_migrations",
+  "_litestream_seq",
+  "_litestream_lock",
+  "libsql_wasm_func_table",
+]);
+
+const tablesRes = await client.execute(
+  "SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%' ORDER BY name"
+);
+const TABLES = tablesRes.rows
+  .map((r) => String(r.name))
+  .filter((n) => !EXCLUDED.has(n));
+
+if (TABLES.length === 0) {
+  console.error("No se encontró ninguna tabla en la base de datos. Abortando sin escribir el backup.");
+  process.exit(1);
+}
 
 const stamp = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
 const outDir = join(root, "backups");
@@ -68,3 +73,10 @@ const outFile = join(outDir, `coachhub-backup-${stamp}.json`);
 writeFileSync(outFile, JSON.stringify(dump, null, 2));
 console.log(`\nBackup guardado: ${outFile}`);
 console.log(`Total: ${totalRows} filas en ${TABLES.length} tablas`);
+
+// Si todas las tablas fallaron o la base está vacía, no dejamos pasar un backup vacío
+// como si fuese correcto: mejor fallar y que el aviso llegue al usuario.
+if (totalRows === 0) {
+  console.error("\nAVISO: el backup no contiene ninguna fila. Revisa las credenciales de la base de datos.");
+  process.exit(2);
+}

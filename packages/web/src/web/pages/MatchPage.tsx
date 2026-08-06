@@ -153,6 +153,12 @@ export default function MatchPage({ id }: { id: string }) {
       const res = await authFetch(`/api/matches/${matchId}/documents/${docId}`, {}, token);
       if (!res.ok) { setDocError("No se pudo abrir el PDF."); return; }
       const { document: doc } = await res.json();
+      // Solo se aceptan data-urls: evita que un valor manipulado en la BD
+      // convierta este fetch en una petición a un servidor externo (SSRF).
+      if (typeof doc?.pdfData !== "string" || !doc.pdfData.startsWith("data:application/pdf")) {
+        setDocError("El documento no es un PDF válido.");
+        return;
+      }
       // Convertir data-url a blob y abrir en pestaña nueva
       const resp = await fetch(doc.pdfData);
       const blob = await resp.blob();

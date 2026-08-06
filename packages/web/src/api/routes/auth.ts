@@ -60,15 +60,40 @@ function setSessionCookie(c: any, token: string) {
   });
 }
 
+function sessionExpiryDate(): Date {
+  return new Date(Date.now() + SESSION_MAX_AGE_SECONDS * 1000);
+}
+
 // Persistencia de tokens en DB (sobrevive reinicios del servidor)
 export async function getUserFromToken(token: string) {
   if (!token) return null;
   const [row] = await db
-    .select({ userId: schema.authTokens.userId, username: schema.users.username, displayName: schema.users.displayName })
+    .select({
+      userId: schema.authTokens.userId,
+      username: schema.users.username,
+      displayName: schema.users.displayName,
+      expiresAt: schema.authTokens.expiresAt,
+      createdAt: schema.authTokens.createdAt,
+    })
     .from(schema.authTokens)
     .innerJoin(schema.users, eq(schema.authTokens.userId, schema.users.id))
     .where(eq(schema.authTokens.token, token));
-  return row ? { userId: row.userId, username: row.username, displayName: row.displayName } : null;
+  if (!row) return null;
+
+  // Tokens antiguos (creados antes de existir la columna expires_at) no tienen
+  // fecha de caducidad guardada: se deduce a partir de createdAt + TTL.
+  const expiresAtMs = row.expiresAt
+    ? row.expiresAt.getTime()
+    : row.createdAt
+      ? row.createdAt.getTime() + SESSION_MAX_AGE_SECONDS * 1000
+      : null;
+
+  if (expiresAtMs !== null && expiresAtMs <= Date.now()) {
+    await db.delete(schema.authTokens).where(eq(schema.authTokens.token, token));
+    return null;
+  }
+
+  return { userId: row.userId, username: row.username, displayName: row.displayName };
 }
 
 function tokenFromRequest(c: any): string | null {
@@ -125,7 +150,7 @@ export const auth = new Hono()
     }).returning();
 
     const token = generateToken();
-    await db.insert(schema.authTokens).values({ token, userId: user.id });
+    await db.insert(schema.authTokens).values({ token, userId: user.id, expiresAt: sessionExpiryDate() });
     setSessionCookie(c, token);
 
     // Correo de bienvenida (informativo). No bloquea el registro: si el envío
@@ -160,7 +185,7 @@ export const auth = new Hono()
     }
 
     const token = generateToken();
-    await db.insert(schema.authTokens).values({ token, userId: user.id });
+    await db.insert(schema.authTokens).values({ token, userId: user.id, expiresAt: sessionExpiryDate() });
     setSessionCookie(c, token);
     return c.json({ token, user: { id: user.id, username: user.username, displayName: user.displayName } }, 200);
   })

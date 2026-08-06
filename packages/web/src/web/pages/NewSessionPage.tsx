@@ -4,13 +4,7 @@ import { ArrowLeft, Upload, FileText, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { authFetch } from "../lib/authFetch";
 import Topbar from "../components/Topbar";
-
-const SESSION_TYPES = [
-  { value: "ataque",      label: "Ataque",               color: "#22d3ee" },
-  { value: "defensa",     label: "Defensa",               color: "#3b82f6" },
-  { value: "transicion",  label: "Transición",            color: "#22c55e" },
-  { value: "preparacion", label: "Preparación de partido", color: "#a855f7" },
-];
+import { SESSION_TYPE_OPTIONS } from "../lib/sessionTypes";
 
 export default function NewSessionPage() {
   const [, navigate] = useLocation();
@@ -198,7 +192,7 @@ export default function NewSessionPage() {
         <div>
           <label className="block text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-secondary)" }}>Tipo de sesión</label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {SESSION_TYPES.map((t) => {
+            {SESSION_TYPE_OPTIONS.map((t) => {
               const selected = sessionType === t.value;
               return (
                 <button

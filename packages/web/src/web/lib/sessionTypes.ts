@@ -17,6 +17,18 @@ export const SESSION_TYPE_STYLE: Record<string, SessionTypeStyle> = {
   preparacion: { color: "#a855f7", label: "PREP", name: "Preparación", bg: "rgba(168,85,247,0.1)", badgeClass: "badge badge-purple" },
 };
 
+/**
+ * Opciones canónicas para selectores de tipo de sesión (formularios).
+ * Fuente única: antes estaba duplicado en SessionPage y NewSessionPage con
+ * colores distintos para "ataque" (#f97316 vs #22d3ee).
+ */
+export const SESSION_TYPE_OPTIONS = [
+  { value: "ataque",      label: "Ataque",                 color: SESSION_TYPE_STYLE.ataque!.color },
+  { value: "defensa",     label: "Defensa",                color: SESSION_TYPE_STYLE.defensa!.color },
+  { value: "transicion",  label: "Transición",             color: SESSION_TYPE_STYLE.transicion!.color },
+  { value: "preparacion", label: "Preparación de partido", color: SESSION_TYPE_STYLE.preparacion!.color },
+];
+
 export function sessionStyle(type: string | undefined | null): SessionTypeStyle {
   return SESSION_TYPE_STYLE[type ?? ""] ?? SESSION_TYPE_STYLE.ataque!;
 }

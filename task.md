@@ -163,3 +163,37 @@ Fase 3-6 (resto de páginas + verificación) — hecho:
   /profile, /sessions/:id, /matches/:id a 1440 y 375. Únicos errores de consola: 401 de
   /api/auth/me antes del login (esperado).
 - Datos de prueba limpiados (scripts/cleanup_test.mjs). preview-dashboard-pro.png borrado.
+
+## Auditoría de código (commit 8f6bc14) — correcciones aplicadas 2026-08-06
+Alcance acordado con Raúl: solo críticos + graves que merecen la pena. Excluido S-01
+(rate limiting en login/register: la web no será pública por ahora) y Q-02 (fragmentar
+PlayersPage/SessionPage/CalendarPage: refactor grande y arriesgado, no compensa ahora).
+
+- S-02 + índices: schema.ts añade uniqueIndex teams_share_code_unique, teams_import_token_unique,
+  team_members_team_user_unique e index sessions_team_date_idx, players_team_idx,
+  match_callups_match_player_idx, attendance_session_player_idx. En attendance y match_callups
+  se usó index() NO único para no romper filas existentes. Aplicado con `bun run db:push --force`.
+  Backup previo: backups/coachhub-backup-2026-08-06.json (verificado 0 duplicados antes).
+- S-03 expiración de sesiones: auth_tokens.expires_at (nullable por compatibilidad con los 10
+  tokens antiguos). Register y login guardan expiresAt = now + SESSION_MAX_AGE_SECONDS (30 d).
+  getUserFromToken rechaza tokens caducados y borra la fila; si expires_at es NULL usa
+  created_at + 30 d como fallback. Verificado por API: token caducado -> 401 + fila borrada,
+  legacy antiguo -> 401, legacy reciente -> 200.
+- S-04: unique en shareCode / importToken (arriba).
+- S-05 SSRF/data-url: MatchPage.openDoc valida doc.pdfData.startsWith("data:application/pdf")
+  antes del fetch; matches.ts POST /:id/documents rechaza pdfData que no sea data-url de PDF (400).
+- S-06 borrado de equipo atómico: teams.ts DELETE /:id ahora arma un array de sentencias y las
+  ejecuta en un único db.batch() (drizzle-libsql). Los selects previos quedan fuera del batch.
+  Verificado: equipo con jugadora + sesión + partido borrado en una sola operación, sin huérfanos.
+- S-07 memory leak: rate-limit.ts purga el Map cada 100 comprobaciones (claves con todos los
+  timestamps fuera de la ventana). Sin setInterval, para no bloquear el cierre del proceso.
+- S-10: index.html lang="en" -> lang="es".
+- Q-01 ficheros muertos borrados: src/web/pages/index.tsx, src/web/lib/api.ts, src/web/lib/utils.ts,
+  src/web/components/ui/button.tsx (+ carpeta components/ui vacía).
+- Q-09 tipos de sesión unificados: SESSION_TYPE_OPTIONS vive solo en src/web/lib/sessionTypes.ts
+  (derivado de SESSION_TYPE_STYLE). Lo consumen SessionPage, NewSessionPage y TeamSessionsPage
+  (antes duplicado 3 veces y "ataque" era #22d3ee en dos de ellas vs #f97316 en la otra).
+- Verificado: tsc -b --force OK, build OK, vitest 16/16, scripts/verify_redesign.py en Chrome
+  (1440 y 375) sin errores nuevos (solo 401 esperados de /api/auth/me pre-login).
+- Datos de prueba limpiados. Nota: siguen en la BD usuarios de pruebas antiguas
+  (auditortest, equipoprueba, g1786022782) y equipos 22/23/24 — ya estaban antes, no se tocan.

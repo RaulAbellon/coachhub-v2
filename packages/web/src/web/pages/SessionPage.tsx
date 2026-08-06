@@ -1,4 +1,4 @@
-import { capFirst } from "../lib/sessionTypes";
+import { capFirst, SESSION_TYPE_OPTIONS } from "../lib/sessionTypes";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
@@ -25,13 +25,6 @@ interface Session {
   sessionType: string;
   microcycle: number;
 }
-
-const SESSION_TYPE_OPTIONS = [
-  { value: "ataque",      label: "Ataque",                color: "#f97316" },
-  { value: "defensa",     label: "Defensa",               color: "#3b82f6" },
-  { value: "transicion",  label: "Transición",            color: "#22c55e" },
-  { value: "preparacion", label: "Preparación de partido", color: "#a855f7" },
-];
 
 const SESSION_TYPE_META: Record<string, { label: string; color: string }> = Object.fromEntries(
   SESSION_TYPE_OPTIONS.map(o => [o.value, { label: o.label, color: o.color }])

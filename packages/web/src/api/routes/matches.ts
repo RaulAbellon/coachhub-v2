@@ -146,6 +146,10 @@ export const matches = new Hono()
 
     const body = await c.req.json().catch(() => null);
     if (!body || !body.pdfData) return c.json({ error: "pdfData requerido" }, 400);
+    // Solo data-urls de PDF: nada de URLs externas guardadas en la BD.
+    if (typeof body.pdfData !== "string" || !body.pdfData.startsWith("data:application/pdf")) {
+      return c.json({ error: "El documento debe ser un PDF" }, 400);
+    }
     try {
       assertBase64FieldsWithinLimit(body, ["pdfData"]);
     } catch (e) {

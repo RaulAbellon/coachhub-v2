@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import { db } from "../database";
 import * as schema from "../database/schema";
 import { eq, and, inArray } from "drizzle-orm";
+import type { BatchItem } from "drizzle-orm/batch";
 import { requireAuth } from "../lib/auth";
 import { randomBytes } from "crypto";
 
@@ -220,31 +221,36 @@ export const teams = new Hono()
       .where(eq(schema.players.teamId, teamId));
     const playerIds = teamPlayers.map(p => p.id);
 
-    if (sessionIds.length > 0) {
-      await db.delete(schema.annotations).where(inArray(schema.annotations.sessionId, sessionIds));
-      await db.delete(schema.attendance).where(inArray(schema.attendance.sessionId, sessionIds));
-    }
     const teamMatches = await db.select({ id: schema.matches.id }).from(schema.matches)
       .where(eq(schema.matches.teamId, teamId));
     const matchIds = teamMatches.map(m => m.id);
 
+    // Todo el borrado va en un único batch: si falla cualquier sentencia, no se
+    // aplica ninguna y el equipo no queda a medio borrar (huérfanos en BD).
+    const statements: BatchItem<"sqlite">[] = [];
+    if (sessionIds.length > 0) {
+      statements.push(db.delete(schema.annotations).where(inArray(schema.annotations.sessionId, sessionIds)));
+      statements.push(db.delete(schema.attendance).where(inArray(schema.attendance.sessionId, sessionIds)));
+    }
     if (matchIds.length > 0) {
-      await db.delete(schema.matchCallups).where(inArray(schema.matchCallups.matchId, matchIds));
-      await db.delete(schema.matchDocuments).where(inArray(schema.matchDocuments.matchId, matchIds));
+      statements.push(db.delete(schema.matchCallups).where(inArray(schema.matchCallups.matchId, matchIds)));
+      statements.push(db.delete(schema.matchDocuments).where(inArray(schema.matchDocuments.matchId, matchIds)));
     }
     if (playerIds.length > 0) {
-      await db.delete(schema.attendance).where(inArray(schema.attendance.playerId, playerIds));
-      await db.delete(schema.playerInjuries).where(inArray(schema.playerInjuries.playerId, playerIds));
-      await db.delete(schema.playerIncidents).where(inArray(schema.playerIncidents.playerId, playerIds));
-      await db.delete(schema.matchCallups).where(inArray(schema.matchCallups.playerId, playerIds));
-      await db.delete(schema.playerCustomValues).where(inArray(schema.playerCustomValues.playerId, playerIds));
+      statements.push(db.delete(schema.attendance).where(inArray(schema.attendance.playerId, playerIds)));
+      statements.push(db.delete(schema.playerInjuries).where(inArray(schema.playerInjuries.playerId, playerIds)));
+      statements.push(db.delete(schema.playerIncidents).where(inArray(schema.playerIncidents.playerId, playerIds)));
+      statements.push(db.delete(schema.matchCallups).where(inArray(schema.matchCallups.playerId, playerIds)));
+      statements.push(db.delete(schema.playerCustomValues).where(inArray(schema.playerCustomValues.playerId, playerIds)));
     }
-    await db.delete(schema.matches).where(eq(schema.matches.teamId, teamId));
-    await db.delete(schema.players).where(eq(schema.players.teamId, teamId));
-    await db.delete(schema.sessions).where(eq(schema.sessions.teamId, teamId));
-    await db.delete(schema.teamFormFields).where(eq(schema.teamFormFields.teamId, teamId));
-    await db.delete(schema.teamMembers).where(eq(schema.teamMembers.teamId, teamId));
-    await db.delete(schema.teams).where(eq(schema.teams.id, teamId));
+    statements.push(db.delete(schema.matches).where(eq(schema.matches.teamId, teamId)));
+    statements.push(db.delete(schema.players).where(eq(schema.players.teamId, teamId)));
+    statements.push(db.delete(schema.sessions).where(eq(schema.sessions.teamId, teamId)));
+    statements.push(db.delete(schema.teamFormFields).where(eq(schema.teamFormFields.teamId, teamId)));
+    statements.push(db.delete(schema.teamMembers).where(eq(schema.teamMembers.teamId, teamId)));
+    statements.push(db.delete(schema.teams).where(eq(schema.teams.id, teamId)));
+
+    await db.batch(statements as [BatchItem<"sqlite">, ...BatchItem<"sqlite">[]]);
 
     return c.json({ ok: true });
   })

@@ -1,4 +1,4 @@
-import { sqliteTable, text, integer, uniqueIndex } from "drizzle-orm/sqlite-core";
+import { sqliteTable, text, integer, uniqueIndex, index } from "drizzle-orm/sqlite-core";
 
 // ─── USERS ────────────────────────────────────────────────────────────────────
 export const users = sqliteTable("users", {
@@ -35,12 +35,15 @@ export const teams = sqliteTable("teams", {
   color: text("color").notNull().default("#FF6B35"),
   logoData: text("logo_data").default(""), // base64 escudo del club
   gender: text("gender").notNull().default("femenino"), // "masculino" | "femenino"
-  shareCode: text("share_code").notNull().default(""), // ID para compartir
-  importToken: text("import_token").notNull().default(""), // token para importar fichas vía Google Forms
+  shareCode: text("share_code").notNull().default(""), // ID para compartir (unico, ver indice abajo)
+  importToken: text("import_token").notNull().default(""), // token para importar fichas vía Google Forms (unico)
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
-});
+}, (t) => ({
+  shareCodeUnique: uniqueIndex("teams_share_code_unique").on(t.shareCode),
+  importTokenUnique: uniqueIndex("teams_import_token_unique").on(t.importToken),
+}));
 
 // ─── TEAM MEMBERS (usuarios con acceso a un equipo) ──────────────────────────
 export const teamMembers = sqliteTable("team_members", {
@@ -51,7 +54,11 @@ export const teamMembers = sqliteTable("team_members", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
-});
+}, (t) => ({
+  // Cada peticion autenticada comprueba la pertenencia al equipo: sin este
+  // indice era un full scan de la tabla que crece con cada usuario/equipo.
+  teamUserUnique: uniqueIndex("team_members_team_user_unique").on(t.teamId, t.userId),
+}));
 
 // ─── SESSIONS ─────────────────────────────────────────────────────────────────
 export const sessions = sqliteTable("sessions", {
@@ -77,7 +84,9 @@ export const sessions = sqliteTable("sessions", {
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
-});
+}, (t) => ({
+  teamDateIdx: index("sessions_team_date_idx").on(t.teamId, t.date),
+}));
 
 // ─── ANNOTATIONS (anotaciones en sesión, visibles solo para editores) ─────────
 export const annotations = sqliteTable("annotations", {
@@ -115,7 +124,9 @@ export const players = sqliteTable("players", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
-});
+}, (t) => ({
+  teamIdx: index("players_team_idx").on(t.teamId),
+}));
 
 // ─── PLAYER INJURIES (seguimiento de lesiones) ───────────────────────────────
 export const playerInjuries = sqliteTable("player_injuries", {
@@ -186,7 +197,9 @@ export const matchCallups = sqliteTable("match_callups", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
-});
+}, (t) => ({
+  matchPlayerIdx: index("match_callups_match_player_idx").on(t.matchId, t.playerId),
+}));
 
 // ─── MATCH DOCUMENTS (PDFs de preparación del partido) ───────────────────────
 export const matchDocuments = sqliteTable("match_documents", {
@@ -204,6 +217,9 @@ export const authTokens = sqliteTable("auth_tokens", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   token: text("token").notNull().unique(),
   userId: integer("user_id").notNull().references(() => users.id),
+  // Caducidad de la sesion. Nullable por compatibilidad con los tokens creados
+  // antes de existir esta columna: para esos se calcula createdAt + TTL.
+  expiresAt: integer("expires_at", { mode: "timestamp" }),
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
@@ -218,7 +234,9 @@ export const attendance = sqliteTable("attendance", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
-});
+}, (t) => ({
+  sessionPlayerIdx: index("attendance_session_player_idx").on(t.sessionId, t.playerId),
+}));
 
 // ─── TEAM FORM FIELDS (configuración editable del formulario de fichas) ───────
 // Cada equipo define qué campos aparecen en la ficha del jugador y en el

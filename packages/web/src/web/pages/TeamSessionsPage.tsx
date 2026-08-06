@@ -5,13 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { authFetch } from "../lib/authFetch";
 import Topbar from "../components/Topbar";
 import { Icon, PATHS } from "../components/icons";
-
-const SESSION_TYPES = [
-  { key: "ataque",      label: "Ataque",               color: "#22d3ee" },
-  { key: "defensa",     label: "Defensa",               color: "#3b82f6" },
-  { key: "transicion",  label: "Transición",            color: "#22c55e" },
-  { key: "preparacion", label: "Preparación de partido", color: "#a855f7" },
-];
+import { SESSION_TYPE_OPTIONS } from "../lib/sessionTypes";
 
 function hexToRgba(hex: string, alpha: number) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -121,15 +115,15 @@ export default function TeamSessionsPage() {
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          {SESSION_TYPES.map(type => {
-            const typeSessions = sessionsByType[type.key] ?? [];
-            const isOpen = !!openFolders[type.key];
+          {SESSION_TYPE_OPTIONS.map(type => {
+            const typeSessions = sessionsByType[type.value] ?? [];
+            const isOpen = !!openFolders[type.value];
 
             return (
-              <div key={type.key} className="card" style={{ overflow: "hidden" }}>
+              <div key={type.value} className="card" style={{ overflow: "hidden" }}>
                 {/* Folder header */}
                 <div
-                  onClick={() => toggleFolder(type.key)}
+                  onClick={() => toggleFolder(type.value)}
                   style={{
                     display: "flex", alignItems: "center", gap: 12,
                     padding: "14px 18px", cursor: "pointer",

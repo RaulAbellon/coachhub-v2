@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import CoachHubLogo from "../components/CoachHubLogo";
+import { CoachHubMark } from "../components/CoachHubLogo";
 
 export default function ResetPasswordPage() {
   const [, navigate] = useLocation();
@@ -52,7 +52,7 @@ export default function ResetPasswordPage() {
       <div style={{ width: "100%", maxWidth: 420 }}>
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-            <CoachHubLogo size={64} />
+            <CoachHubMark size={60} radius={18} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
             CoachHub
@@ -68,7 +68,7 @@ export default function ResetPasswordPage() {
               <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 20 }}>
                 Falta el código de recuperación. Solicita un nuevo enlace desde la pantalla de inicio.
               </p>
-              <button className="btn-primary" onClick={() => navigate("/login")}
+              <button className="btn-gradient" onClick={() => navigate("/login")}
                 style={{ width: "100%", justifyContent: "center" }}>
                 Ir a iniciar sesión
               </button>
@@ -82,7 +82,7 @@ export default function ResetPasswordPage() {
               <p style={{ fontSize: 13, color: "var(--text-secondary)", lineHeight: 1.6, marginBottom: 20 }}>
                 Ya puedes iniciar sesión con tu nueva contraseña.
               </p>
-              <button className="btn-primary" onClick={() => navigate("/login")}
+              <button className="btn-gradient" onClick={() => navigate("/login")}
                 style={{ width: "100%", justifyContent: "center" }}>
                 Iniciar sesión
               </button>
@@ -110,15 +110,15 @@ export default function ResetPasswordPage() {
               {error && (
                 <div style={{
                   padding: "10px 14px", borderRadius: 8,
-                  background: "rgba(255,59,48,0.12)", border: "1px solid rgba(255,59,48,0.3)",
-                  color: "#FF3B30", fontSize: 13, marginBottom: 16,
+                  background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)",
+                  color: "#ef4444", fontSize: 13, marginBottom: 16,
                 }}>
                   {error}
                 </div>
               )}
 
-              <button type="submit" className="btn-primary" disabled={loading || !newPassword || !confirm}
-                style={{ width: "100%", opacity: loading || !newPassword || !confirm ? 0.6 : 1 }}>
+              <button type="submit" className="btn-gradient" disabled={loading || !newPassword || !confirm}
+                style={{ width: "100%", height: 42, fontSize: 14, opacity: loading || !newPassword || !confirm ? 0.6 : 1 }}>
                 {loading ? "..." : "Guardar contraseña"}
               </button>
             </form>

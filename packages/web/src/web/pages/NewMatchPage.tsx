@@ -3,6 +3,7 @@ import { useLocation } from "wouter";
 import { ArrowLeft } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { authFetch } from "../lib/authFetch";
+import Topbar from "../components/Topbar";
 
 export default function NewMatchPage() {
   const [, navigate] = useLocation();
@@ -64,31 +65,34 @@ export default function NewMatchPage() {
   };
 
   const inputStyle: React.CSSProperties = {
-    background: "#1C2333", border: "1px solid #30363D", color: "#E6EDF3",
+    background: "var(--bg-surface)", border: "1px solid rgba(255,255,255,0.06)", color: "var(--text-primary)",
   };
 
   return (
-    <div className="min-h-screen" style={{ background: "#0D1117", color: "#E6EDF3" }}>
-      <div className="flex items-center gap-4 px-6 py-4 border-b" style={{ borderColor: "#30363D" }}>
-        <button onClick={() => window.history.back()} className="flex items-center gap-2 text-sm transition-opacity hover:opacity-70" style={{ color: "#8B8B9B" }}>
-          <ArrowLeft size={18} /> Volver
-        </button>
-        <h1 className="text-lg font-semibold tracking-wide uppercase">Nuevo Partido</h1>
-      </div>
+    <>
+      <Topbar
+        crumbs={[{ label: "Nuevo partido" }]}
+        actions={
+          <button className="btn-ghost" onClick={() => window.history.back()}>
+            <ArrowLeft size={14} /> Volver
+          </button>
+        }
+      />
+    <div style={{ color: "var(--text-primary)" }}>
 
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
         {error && (
-          <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "#2D1B1B", color: "#F85149", border: "1px solid #5A1D1D" }}>{error}</div>
+          <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }}>{error}</div>
         )}
 
         {/* Equipo */}
         {teamsLoaded && teams.length === 0 ? (
-          <div className="px-4 py-4 rounded-lg text-sm" style={{ background: "#2D1B1B", color: "#F0B8B8", border: "1px solid #5A1D1D" }}>
-            No tienes equipos donde puedas crear partidos. <button onClick={() => navigate("/teams")} style={{ color: "#FF6B35", textDecoration: "underline", fontWeight: 600 }}>Ir a equipos</button>
+          <div className="px-4 py-4 rounded-lg text-sm" style={{ background: "rgba(239,68,68,0.1)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)" }}>
+            No tienes equipos donde puedas crear partidos. <button onClick={() => navigate("/teams")} style={{ color: "#22d3ee", textDecoration: "underline", fontWeight: 600 }}>Ir a equipos</button>
           </div>
         ) : (
           <div>
-            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Equipo *</label>
+            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Equipo *</label>
             <select value={teamId} onChange={(e) => setTeamId(e.target.value ? Number(e.target.value) : "")} className="w-full px-4 py-3 rounded-lg text-sm outline-none" style={inputStyle}>
               <option value="">Selecciona un equipo</option>
               {teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
@@ -98,15 +102,15 @@ export default function NewMatchPage() {
 
         {/* Local / Visitante */}
         <div>
-          <label className="block text-xs uppercase tracking-widest mb-3" style={{ color: "#8B8B9B" }}>Condición</label>
+          <label className="block text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-secondary)" }}>Condición</label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            {([["home", "Local", "#3FB950"], ["away", "Visitante", "#58A6FF"]] as const).map(([v, label, color]) => {
+            {([["home", "Local", "#22c55e"], ["away", "Visitante", "#3b82f6"]] as const).map(([v, label, color]) => {
               const selected = homeAway === v;
               return (
                 <button key={v} onClick={() => setHomeAway(v)} style={{
-                  background: selected ? `${color}20` : "#1C2333",
-                  border: `2px solid ${selected ? color : "#30363D"}`,
-                  color: selected ? color : "#8B8B9B",
+                  background: selected ? `${color}20` : "var(--bg-surface)",
+                  border: `2px solid ${selected ? color : "var(--border)"}`,
+                  color: selected ? color : "var(--text-secondary)",
                   borderRadius: 10, padding: "12px 16px", fontSize: 13,
                   fontWeight: selected ? 700 : 500, cursor: "pointer", transition: "all 0.15s",
                 }}>{label}</button>
@@ -117,44 +121,45 @@ export default function NewMatchPage() {
 
         {/* Rival */}
         <div>
-          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Rival</label>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Rival</label>
           <input type="text" value={opponent} onChange={(e) => setOpponent(e.target.value)} placeholder="Ej: BM Valladolid B" className="w-full px-4 py-3 rounded-lg text-sm outline-none" style={inputStyle} />
         </div>
 
         {/* Fecha */}
         <div>
-          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Fecha *</label>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Fecha *</label>
           <input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-full px-4 py-3 rounded-lg text-sm outline-none" style={{ ...inputStyle, colorScheme: "dark" }} />
         </div>
 
         {/* Hora + Citación */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Hora del partido</label>
+            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Hora del partido</label>
             <input type="time" value={time} onChange={(e) => setTime(e.target.value)} className="w-full px-4 py-3 rounded-lg text-sm outline-none" style={{ ...inputStyle, colorScheme: "dark" }} />
           </div>
           <div>
-            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Hora de citación</label>
+            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Hora de citación</label>
             <input type="time" value={meetingTime} onChange={(e) => setMeetingTime(e.target.value)} className="w-full px-4 py-3 rounded-lg text-sm outline-none" style={{ ...inputStyle, colorScheme: "dark" }} />
           </div>
         </div>
 
         {/* Pabellón / lugar */}
         <div>
-          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Pabellón / lugar</label>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Pabellón / lugar</label>
           <input type="text" value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="Ej: Polideportivo Huerta del Rey" className="w-full px-4 py-3 rounded-lg text-sm outline-none" style={inputStyle} />
         </div>
 
         {/* Notas */}
         <div>
-          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Notas</label>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Notas</label>
           <textarea value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="Notas adicionales..." rows={3} className="w-full px-4 py-3 rounded-lg text-sm outline-none resize-none" style={inputStyle} />
         </div>
 
-        <button onClick={handleSave} disabled={saving || !teamId} className="w-full py-4 rounded-lg font-semibold text-sm uppercase tracking-widest transition-opacity" style={{ background: "#FF6B35", color: "#0D1117", opacity: (saving || !teamId) ? 0.5 : 1 }}>
+        <button onClick={handleSave} disabled={saving || !teamId} className="w-full py-4 rounded-lg font-semibold text-sm uppercase tracking-widest transition-opacity" style={{ background: "var(--accent)", color: "#000", opacity: (saving || !teamId) ? 0.5 : 1 }}>
           {saving ? "Guardando..." : "Guardar Partido"}
         </button>
       </div>
     </div>
+    </>
   );
 }

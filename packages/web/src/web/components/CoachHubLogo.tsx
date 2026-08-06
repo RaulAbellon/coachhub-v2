@@ -3,7 +3,7 @@ interface CoachHubLogoProps {
   color?: string;
 }
 
-export default function CoachHubLogo({ size = 40, color = "#FF6B35" }: CoachHubLogoProps) {
+export default function CoachHubLogo({ size = 40, color = "#ffffff" }: CoachHubLogoProps) {
   // Regular hexagon points (flat-top orientation)
   const cx = 50, cy = 50, r = 38;
   const points = Array.from({ length: 6 }, (_, i) => {
@@ -47,5 +47,29 @@ export default function CoachHubLogo({ size = 40, color = "#FF6B35" }: CoachHubL
         strokeLinecap="round"
       />
     </svg>
+  );
+}
+
+/**
+ * Marca en cuadrado con gradiente cyan→púrpura (Dashboard Pro).
+ * Usada en la sidebar compacta, el login y cualquier cabecera de marca.
+ */
+export function CoachHubMark({ size = 44, radius = 14 }: { size?: number; radius?: number }) {
+  return (
+    <div
+      style={{
+        width: size,
+        height: size,
+        borderRadius: radius,
+        background: "var(--accent-gradient)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        boxShadow: "0 4px 12px var(--accent-glow)",
+        flexShrink: 0,
+      }}
+    >
+      <CoachHubLogo size={Math.round(size * 0.5)} color="#ffffff" />
+    </div>
   );
 }

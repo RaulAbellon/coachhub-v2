@@ -83,7 +83,7 @@ function calcAge(birthDate: string | null): string {
 export type PdfRange = { from?: string; to?: string };
 
 /** Construye el documento (útil para tests) sin descargarlo. */
-export function buildPlayerPdf(summary: PlayerSummary, range?: PdfRange, accentHex = "#FF6B35") {
+export function buildPlayerPdf(summary: PlayerSummary, range?: PdfRange, accentHex = "#0891b2") {
   const doc = new jsPDF({ unit: "pt", format: "a4" });
   const pageW = doc.internal.pageSize.getWidth();
   const pageH = doc.internal.pageSize.getHeight();
@@ -372,7 +372,7 @@ export function buildPlayerPdf(summary: PlayerSummary, range?: PdfRange, accentH
   return { doc, fileName: `ficha_${safeName}_${new Date().toISOString().slice(0, 10)}.pdf` };
 }
 
-export function generatePlayerPdf(summary: PlayerSummary, range?: PdfRange, accentHex = "#FF6B35") {
+export function generatePlayerPdf(summary: PlayerSummary, range?: PdfRange, accentHex = "#0891b2") {
   const { doc, fileName } = buildPlayerPdf(summary, range, accentHex);
   doc.save(fileName);
 }

@@ -181,7 +181,7 @@ export function PlayerFormSetup({ team, teams, onClose, onRegenerateToken, regen
         </div>
 
         {error && (
-          <p style={{ fontSize: 12, color: "#FF453A", marginTop: 12, lineHeight: 1.5 }}>{error}</p>
+          <p style={{ fontSize: 12, color: "#ef4444", marginTop: 12, lineHeight: 1.5 }}>{error}</p>
         )}
 
         {/* ═══════════ TAB CAMPOS ═══════════ */}
@@ -278,7 +278,7 @@ export function PlayerFormSetup({ team, teams, onClose, onRegenerateToken, regen
                           </button>
                           {!f.isBuiltin && (
                             <button onClick={() => deleteField.mutate(f.id)}
-                              style={{ background: "transparent", border: "none", color: "#FF453A", cursor: "pointer", fontSize: 14, padding: "0 2px" }}>
+                              style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 14, padding: "0 2px" }}>
                               ✕
                             </button>
                           )}
@@ -493,7 +493,7 @@ function OptionsEditor({
             }}>
               {o}
               <button onClick={() => onRemove(i)}
-                style={{ background: "transparent", border: "none", color: "#FF453A", cursor: "pointer", fontSize: 12, padding: 0 }}>✕</button>
+                style={{ background: "transparent", border: "none", color: "#ef4444", cursor: "pointer", fontSize: 12, padding: 0 }}>✕</button>
             </span>
           ))}
         </div>

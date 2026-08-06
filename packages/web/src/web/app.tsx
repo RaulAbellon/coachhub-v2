@@ -4,6 +4,7 @@ import { AgentFeedback } from "@runablehq/website-runtime";
 import { Provider } from "./components/provider";
 import { useAuth } from "./context/AuthContext";
 import { useIsMobile } from "./hooks/useIsMobile";
+import DashboardPage from "./pages/DashboardPage";
 import CalendarPage from "./pages/CalendarPage";
 import SessionPage from "./pages/SessionPage";
 import NewSessionPage from "./pages/NewSessionPage";
@@ -61,9 +62,20 @@ function AppLayout() {
     <div style={{ display: "flex", minHeight: "100vh", background: "var(--bg-primary)" }}>
       <Sidebar />
       <BottomNav />
-      <main style={{ flex: 1, marginLeft: isMobile ? 0 : 240, minHeight: "100vh", overflowY: "auto", paddingBottom: isMobile ? 70 : 0 }}>
+      <main
+        style={{
+          flex: 1,
+          marginLeft: isMobile ? 0 : 72,
+          minHeight: "100vh",
+          display: "flex",
+          flexDirection: "column",
+          minWidth: 0,
+          paddingBottom: isMobile ? 70 : 0,
+        }}
+      >
         <Switch>
-          <Route path="/" component={CalendarPage} />
+          <Route path="/" component={DashboardPage} />
+          <Route path="/calendar" component={CalendarPage} />
           <Route path="/sessions/new" component={NewSessionPage} />
           <Route path="/sessions/:id">
             {(params) => <SessionPage id={params.id} />}

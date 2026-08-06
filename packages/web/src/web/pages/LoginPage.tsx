@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
-import CoachHubLogo from "../components/CoachHubLogo";
+import { CoachHubMark } from "../components/CoachHubLogo";
 
 const ROLES = [
   { value: "entrenador", label: "Entrenador/a" },
@@ -111,7 +111,7 @@ export default function LoginPage() {
         {/* Logo */}
         <div style={{ textAlign: "center", marginBottom: 32 }}>
           <div style={{ display: "flex", justifyContent: "center", marginBottom: 16 }}>
-            <CoachHubLogo size={64} />
+            <CoachHubMark size={60} radius={18} />
           </div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
             CoachHub
@@ -225,8 +225,8 @@ export default function LoginPage() {
               {error && (
                 <div style={{
                   padding: "10px 14px", borderRadius: 8,
-                  background: "rgba(255,59,48,0.12)", border: "1px solid rgba(255,59,48,0.3)",
-                  color: "#FF3B30", fontSize: 13, marginBottom: 16,
+                  background: "rgba(239,68,68,0.12)", border: "1px solid rgba(239,68,68,0.3)",
+                  color: "#ef4444", fontSize: 13, marginBottom: 16,
                 }}>
                   {error}
                 </div>
@@ -234,9 +234,9 @@ export default function LoginPage() {
 
               <button
                 type="submit"
-                className="btn-primary"
+                className="btn-gradient"
                 disabled={loading || !canSubmit}
-                style={{ width: "100%", opacity: loading || !canSubmit ? 0.6 : 1 }}
+                style={{ width: "100%", height: 42, fontSize: 14, opacity: loading || !canSubmit ? 0.6 : 1 }}
               >
                 {loading ? "..." : mode === "login" ? "Entrar" : mode === "register" ? "Crear cuenta" : "Enviar enlace"}
               </button>

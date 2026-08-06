@@ -1,16 +1,21 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
 import { playerWord } from "../lib/gender";
 import { authFetch } from "../lib/authFetch";
 import { PlayerFormSetup } from "../components/PlayerFormSetup";
+import Topbar from "../components/Topbar";
+import { Icon, PATHS } from "../components/icons";
+import { useIsMobile } from "../hooks/useIsMobile";
 
 const PRESET_COLORS = [
-  "#FF6B35", "#F5A623", "#FF453A", "#FF9500",
-  "#30D158", "#00D4A0", "#0A84FF", "#5E5CE6",
-  "#BF5AF2", "#FF2D55", "#FFFFFF", "#8E8E93",
+  "#22d3ee", "#a855f7", "#fbbf24", "#f97316",
+  "#22c55e", "#14b8a6", "#3b82f6", "#6366f1",
+  "#ec4899", "#ef4444", "#fafafa", "#a1a1aa",
 ];
+
+const DEFAULT_TEAM_COLOR = "#22d3ee";
 
 const CATEGORIES = [
   "Senior", "Juvenil", "Cadete", "Infantil",
@@ -67,11 +72,12 @@ export default function TeamsPage() {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
   const { token } = useAuth();
+  const isMobile = useIsMobile();
   const [showForm, setShowForm] = useState(false);
   const [showJoin, setShowJoin] = useState(false);
   const [name, setName] = useState("");
   const [category, setCategory] = useState("");
-  const [color, setColor] = useState("#FF6B35");
+  const [color, setColor] = useState(DEFAULT_TEAM_COLOR);
   const [gender, setGender] = useState<"femenino" | "masculino">("femenino");
   const [logoData, setLogoData] = useState<string>("");
   const [editTeamId, setEditTeamId] = useState<number | null>(null);
@@ -82,6 +88,14 @@ export default function TeamsPage() {
   const [membersTeamId, setMembersTeamId] = useState<number | null>(null);
   const [importTeamId, setImportTeamId] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("new") === "1") {
+      setShowForm(true);
+      window.history.replaceState({}, "", "/teams");
+    }
+  }, []);
 
   const { data, isLoading } = useQuery({
     queryKey: ["teams"],
@@ -113,7 +127,7 @@ export default function TeamsPage() {
       qc.invalidateQueries({ queryKey: ["teams"] });
       setShowForm(false);
       setEditTeamId(null);
-      setName(""); setCategory(""); setColor("#FF6B35"); setGender("femenino"); setLogoData("");
+      setName(""); setCategory(""); setColor(DEFAULT_TEAM_COLOR); setGender("femenino"); setLogoData("");
     },
   });
 
@@ -218,36 +232,38 @@ export default function TeamsPage() {
     setEditTeamId(team.id);
     setName(team.name ?? "");
     setCategory(team.category ?? "");
-    setColor(team.color ?? "#FF6B35");
+    setColor(team.color ?? DEFAULT_TEAM_COLOR);
     setGender(team.gender === "masculino" ? "masculino" : "femenino");
     setLogoData(team.logoData ?? "");
     setShowForm(true);
   };
 
   return (
-    <div className="fade-in" style={{ padding: "20px 16px", maxWidth: 700, margin: "0 auto", boxSizing: "border-box", width: "100%" }}>
+    <>
+      <Topbar
+        crumbs={[{ label: "Equipos" }]}
+        actions={
+          <>
+            {!isMobile && (
+              <button className="btn-ghost" onClick={() => setShowJoin(true)}>Unirse con código</button>
+            )}
+            <button className="btn-accent" onClick={() => setShowForm(true)}>
+              <Icon d={PATHS.plus} size={14} color="#000" strokeWidth={2.2} /> Equipo
+            </button>
+          </>
+        }
+      />
 
-      {/* ── Header ── */}
-      <div style={{ marginBottom: 20 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em", marginBottom: 4 }}>
-          Equipos
-        </h1>
-        <p style={{ fontSize: 12, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.06em" }}>
-          {teams.length} equipo{teams.length !== 1 ? "s" : ""} registrado{teams.length !== 1 ? "s" : ""}
-        </p>
-      </div>
-
-      {/* ── Action buttons ── */}
-      <div style={{ display: "flex", gap: 10, marginBottom: 24, flexWrap: "wrap" }}>
+    <div className="page-body">
+      {isMobile && (
         <button className="btn-ghost" onClick={() => setShowJoin(true)}
-          style={{ flex: "1 1 auto", minWidth: 140, justifyContent: "center" }}>
+          style={{ width: "100%", justifyContent: "center", marginBottom: 14 }}>
           Unirse con código
         </button>
-        <button className="btn-primary" onClick={() => setShowForm(true)}
-          style={{ flex: "1 1 auto", minWidth: 140, justifyContent: "center" }}>
-          + Nuevo equipo
-        </button>
-      </div>
+      )}
+      <p className="section-label" style={{ marginBottom: 14 }}>
+        {teams.length} equipo{teams.length !== 1 ? "s" : ""} registrado{teams.length !== 1 ? "s" : ""}
+      </p>
 
       {/* ── Configuración de campos + Google Form ── */}
       {importTeamId !== null && importTeam && (
@@ -292,7 +308,7 @@ export default function TeamsPage() {
                       </select>
                       <button
                         onClick={() => removeMember.mutate({ teamId: membersTeamId!, memberId: m.id })}
-                        style={{ background: "transparent", border: "none", color: "#FF3B30", cursor: "pointer", fontSize: 13, padding: "0 4px" }}>
+                        style={{ background: "transparent", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: 13, padding: "0 4px" }}>
                         ✕
                       </button>
                     </div>
@@ -324,7 +340,7 @@ export default function TeamsPage() {
             </p>
 
             {joinError && (
-              <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(255,59,48,0.12)", color: "#FF3B30", fontSize: 13, marginTop: 12 }}>
+              <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(239,68,68,0.12)", color: "var(--danger)", fontSize: 13, marginTop: 12 }}>
                 {joinError}
               </div>
             )}
@@ -407,7 +423,7 @@ export default function TeamsPage() {
                 </button>
                 {logoData && (
                   <button onClick={() => { setLogoData(""); if (fileInputRef.current) fileInputRef.current.value = ""; }}
-                    style={{ width: "100%", fontSize: 12, padding: "4px 0", background: "transparent", border: "none", color: "#FF3B30", cursor: "pointer" }}>
+                    style={{ width: "100%", fontSize: 12, padding: "4px 0", background: "transparent", border: "none", color: "var(--danger)", cursor: "pointer" }}>
                     Eliminar escudo
                   </button>
                 )}
@@ -448,7 +464,7 @@ export default function TeamsPage() {
               Se eliminarán también sus sesiones, jugadoras y fichas asociadas. Esta acción no se puede deshacer.
             </p>
             {deleteError && (
-              <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(255,69,58,0.12)", color: "var(--danger)", fontSize: 13, marginBottom: 16 }}>
+              <div style={{ padding: "10px 14px", borderRadius: 10, background: "rgba(239,68,68,0.12)", color: "var(--danger)", fontSize: 13, marginBottom: 16 }}>
                 {deleteError}
               </div>
             )}
@@ -468,7 +484,7 @@ export default function TeamsPage() {
         <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>Cargando...</p>
       ) : teams.length === 0 ? (
         <div className="card" style={{ padding: 40, textAlign: "center" }}>
-          <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(245,166,35,0.12)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", color: "var(--accent)" }}>
+          <div style={{ width: 52, height: 52, borderRadius: 14, background: "rgba(34,211,238,0.12)", display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 14px", color: "var(--accent)" }}>
             <UsersIcon />
           </div>
           <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Sin equipos</h3>
@@ -481,7 +497,7 @@ export default function TeamsPage() {
           </div>
         </div>
       ) : (
-        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(340px, 1fr))", gap: 12 }}>
           {teams.map((team: any) => (
             <div key={team.id} className="card" style={{
               padding: "16px",
@@ -558,6 +574,7 @@ export default function TeamsPage() {
         </div>
       )}
     </div>
+    </>
   );
 }
 

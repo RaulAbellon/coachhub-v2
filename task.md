@@ -121,3 +121,45 @@ comprueba ningún archivo. Usar SIEMPRE `bunx tsc -b --force` desde packages/web
 - [x] F-0065 / F-0066 validar teamId al cambiar rol y al eliminar miembro (IDOR)
 - [x] F-0070 null-check de jugadora en PUT/DELETE de lesiones e incidencias
 - [x] F-LIVE-002 revisado: /api/auth/me ya se llamaba solo una vez (AuthProvider)
+
+## [2026-08-05] Rediseño "Dashboard Pro" — implementación
+Doc fuente: /home/user/Attachments/coachhub-rediseño-dashboard-pro_hrSXaD.md (768 líneas, leído completo).
+Preview validado por el usuario (PreviewDashboardPage.tsx, se borra al final).
+
+Fase 1 (fundamentos) — hecho:
+- styles.css: tokens nuevos (cyan #22d3ee + púrpura #a855f7 + amarillo, fondos #09090b/#0f0f11/#141416), clases btn-accent/gradient/ghost/danger, card, badge-*, section-label, inputs, stats-strip/two-col/teams-strip/page-body, nav-tip, media queries 768/1024, scrollbar 6px. `.fade-in` neutralizado (no animaciones de entrada).
+- index.html: DM Sans (400-800) + title CoachHub.
+- CoachHubLogo: color por defecto blanco + export CoachHubMark (cuadrado 44 con gradiente).
+- components/icons.tsx: <Icon d={PATHS.x}/> compartido.
+- Sidebar.tsx: reescrita a 72px icon-only con tooltips, barra activa 3x24, botón nueva sesión gradiente, avatar 32.
+- Topbar.tsx: sticky 56px, breadcrumb + acciones; + ViewToggle segmentado.
+- api/routes/dashboard.ts: GET /api/dashboard (stats globales, equipos con players/sessions/matches/attendance, upcoming 6, recent 6). Montado en api/index.ts.
+
+Fase 2 (dashboard) — en curso: componentes StatsStrip/TeamCardCompact/UpcomingEvents/SessionsTable + DashboardPage; CalendarPage pasa a /calendar.
+Rutas: "/" = Dashboard, "/calendar" = calendario mensual.
+
+Verificación obligatoria: `bunx tsc -b --force` (NO --noEmit) + `bun run build` + `bunx vitest run` en packages/web + navegador real (Playwright channel=chrome).
+
+Fase 2 (dashboard + calendario) — hecho:
+- DashboardPage: query ["dashboard"], Topbar + ViewToggle + "+ Sesión", StatsStrip (4), two-col (equipos + próximos eventos), sesiones recientes. En móvil sin ViewToggle (FAB de BottomNav).
+- CalendarPage: Topbar (breadcrumb + nav de mes con chevrones + ViewToggle + "+ Sesión"), .page-body, lib/sessionTypes (sessionStyle/hexToRgba/MATCH_COLOR), colores viejos fuera, sin emoji 🏐, formatDateES capitaliza solo la 1ª letra.
+- BottomNav: safe-area + labels sin recorte; .page-body móvil con padding-bottom 84 para no tapar contenido.
+- Verificado: tsc -b --force OK, build OK, vitest 16/16, navegador real 1440 y 375 (solo 401 esperados de /api/auth/me pre-login).
+
+Fase 3 (resto de páginas) — en curso:
+- Barrido global de colores legacy (#FF6B35/#F5A623/#FF453A/#3FB950/#58A6FF/#BC8CFF/#0D1117/#1C1C1E/#8B8B9B + rgba equivalentes) -> paleta nueva en 13 ficheros. playerPdf usa #0891b2 (contraste sobre blanco).
+- TeamsPage: Topbar + page-body, grid auto-fill 340px, ?new=1 abre modal, PRESET_COLORS nueva paleta.
+- Pendiente: PlayersPage, SessionPage, NewSessionPage, MatchPage, NewMatchPage, TeamSessionsPage, TeamMatchesPage, ProfilePage, LoginPage, ResetPasswordPage (Topbar + page-body).
+
+Fase 3-6 (resto de páginas + verificación) — hecho:
+- PlayersPage, SessionPage, NewSessionPage, MatchPage, NewMatchPage, TeamSessionsPage,
+  TeamMatchesPage, ProfilePage, LoginPage (CoachHubMark + btn-gradient), ResetPasswordPage.
+  SessionPage y MatchPage mantienen su layout fullscreen/columna propia (no .page-body en Session).
+- Fechas es-ES: capFirst() en lib/sessionTypes (antes textTransform:capitalize ponía
+  "Martes, 11 De Agosto De 2026").
+- TeamCardCompact usa playerWord(gender) -> "4 jugadoras" / "4 jugadores".
+- Verificado: tsc -b --force OK, build OK, vitest 16/16, navegador real (Chrome) en
+  /, /calendar, /teams, /teams/:id/{players,sessions,matches}, /sessions/new, /matches/new,
+  /profile, /sessions/:id, /matches/:id a 1440 y 375. Únicos errores de consola: 401 de
+  /api/auth/me antes del login (esperado).
+- Datos de prueba limpiados (scripts/cleanup_test.mjs). preview-dashboard-pro.png borrado.

@@ -1,3 +1,4 @@
+import { capFirst } from "../lib/sessionTypes";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
@@ -26,10 +27,10 @@ interface Session {
 }
 
 const SESSION_TYPE_OPTIONS = [
-  { value: "ataque",      label: "Ataque",                color: "#FF6B35" },
-  { value: "defensa",     label: "Defensa",               color: "#58A6FF" },
-  { value: "transicion",  label: "Transición",            color: "#3FB950" },
-  { value: "preparacion", label: "Preparación de partido", color: "#BC8CFF" },
+  { value: "ataque",      label: "Ataque",                color: "#f97316" },
+  { value: "defensa",     label: "Defensa",               color: "#3b82f6" },
+  { value: "transicion",  label: "Transición",            color: "#22c55e" },
+  { value: "preparacion", label: "Preparación de partido", color: "#a855f7" },
 ];
 
 const SESSION_TYPE_META: Record<string, { label: string; color: string }> = Object.fromEntries(
@@ -47,8 +48,8 @@ const STATUS_LABELS: Record<AttendanceStatus, string> = {
 
 const STATUS_COLORS: Record<AttendanceStatus, string> = {
   present: "#34C759",
-  absent: "#FF3B30",
-  justified: "#FF9500",
+  absent: "#ef4444",
+  justified: "#f97316",
   injured: "#8E8E93",
 };
 
@@ -305,14 +306,14 @@ export default function SessionPage({ id }: { id?: string }) {
   const allPlayers = playersData?.players ?? [];
   const activeInjuries: any[] = activeInjuriesData?.injuries ?? [];
   const formattedDate = session
-    ? new Date(session.date + "T00:00:00").toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" })
+    ? capFirst(new Date(session.date + "T00:00:00").toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" }))
     : "";
   const presentCount = attendance.filter((r: any) => r.status === "present").length;
 
   if (loading) return <div className="page-container" style={{ padding: 24, color: "var(--text-secondary)", fontSize: 14 }}>Cargando sesión...</div>;
   if (error || !session) return (
     <div style={{ padding: 40 }}>
-      <p style={{ color: "#FF3B30", marginBottom: 16 }}>{error || "Sesión no encontrada"}</p>
+      <p style={{ color: "#ef4444", marginBottom: 16 }}>{error || "Sesión no encontrada"}</p>
       <button className="btn-ghost" onClick={() => navigate("/")}>← Volver</button>
     </div>
   );
@@ -359,7 +360,7 @@ export default function SessionPage({ id }: { id?: string }) {
             <button className="btn-ghost" onClick={startEdit} style={{ fontSize: 12, padding: "5px 10px" }}>Editar</button>
             {canEdit && (
               <button className="btn-ghost" onClick={handleDelete} disabled={deleting}
-                style={{ fontSize: 12, padding: "5px 10px", color: "#FF3B30" }}>
+                style={{ fontSize: 12, padding: "5px 10px", color: "#ef4444" }}>
                 {deleting ? "..." : "Eliminar"}
               </button>
             )}
@@ -410,7 +411,7 @@ export default function SessionPage({ id }: { id?: string }) {
       ) : (
         <div>
           <div style={{ display: "flex", flexWrap: "wrap", alignItems: "center", gap: 6, marginBottom: session.objectives ? 8 : 0 }}>
-            <span style={{ fontSize: 11, color: "var(--text-secondary)", textTransform: "capitalize" }}>{formattedDate}</span>
+            <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>{formattedDate}</span>
             <span style={{ fontSize: 11, color: "var(--text-secondary)" }}>· {session.duration} min</span>
             {session.sessionType && (
               <span style={{
@@ -421,7 +422,7 @@ export default function SessionPage({ id }: { id?: string }) {
             {session.microcycle != null && (
               <span style={{
                 fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 10,
-                background: "rgba(245,166,35,0.12)", color: "var(--accent)", border: "1px solid rgba(245,166,35,0.25)",
+                background: "rgba(251,191,36,0.12)", color: "var(--accent)", border: "1px solid rgba(251,191,36,0.25)",
               }}>MC {session.microcycle}</span>
             )}
           </div>
@@ -618,7 +619,7 @@ export default function SessionPage({ id }: { id?: string }) {
           {addAnnotation.isPending ? "..." : "Añadir anotación"}
         </button>
         {annotationError && (
-          <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 8, background: "rgba(255,69,58,0.12)", color: "var(--danger)", fontSize: 12 }}>
+          <div style={{ marginTop: 8, padding: "8px 12px", borderRadius: 8, background: "rgba(239,68,68,0.12)", color: "var(--danger)", fontSize: 12 }}>
             {annotationError}
           </div>
         )}
@@ -747,7 +748,7 @@ export default function SessionPage({ id }: { id?: string }) {
                     onClick={() => handleDischarge(inj.id)}
                     style={{
                       fontSize: 11, padding: "4px 10px", borderRadius: 6, flexShrink: 0,
-                      background: "#3FB95022", border: "1px solid #3FB95055", color: "#3FB950",
+                      background: "#22c55e22", border: "1px solid #22c55e55", color: "#22c55e",
                       cursor: "pointer", fontWeight: 600, whiteSpace: "nowrap",
                     }}>
                     Alta

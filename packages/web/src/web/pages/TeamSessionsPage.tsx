@@ -3,12 +3,14 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation, useParams } from "wouter";
 import { useAuth } from "../context/AuthContext";
 import { authFetch } from "../lib/authFetch";
+import Topbar from "../components/Topbar";
+import { Icon, PATHS } from "../components/icons";
 
 const SESSION_TYPES = [
-  { key: "ataque",      label: "Ataque",               color: "#FF6B35" },
-  { key: "defensa",     label: "Defensa",               color: "#58A6FF" },
-  { key: "transicion",  label: "Transición",            color: "#3FB950" },
-  { key: "preparacion", label: "Preparación de partido", color: "#BC8CFF" },
+  { key: "ataque",      label: "Ataque",               color: "#22d3ee" },
+  { key: "defensa",     label: "Defensa",               color: "#3b82f6" },
+  { key: "transicion",  label: "Transición",            color: "#22c55e" },
+  { key: "preparacion", label: "Preparación de partido", color: "#a855f7" },
 ];
 
 function hexToRgba(hex: string, alpha: number) {
@@ -64,7 +66,7 @@ export default function TeamSessionsPage() {
 
   const teams = teamsData?.teams ?? [];
   const team = teams.find((t: any) => t.id === teamId);
-  const teamColor = team?.color || "#FF6B35";
+  const teamColor = team?.color || "#22d3ee";
   const canEdit = team?.role === "owner" || team?.role === "editor";
 
   const toggleFolder = (key: string) =>
@@ -80,52 +82,28 @@ export default function TeamSessionsPage() {
   });
 
   return (
-    <div className="fade-in" style={{ padding: "32px 40px", maxWidth: 860, margin: "0 auto" }}>
-      {/* Back + header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 28 }}>
-        <button
-          onClick={() => navigate("/teams")}
-          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 22, lineHeight: 1, padding: 0 }}
-        >←</button>
-        <div>
-          {team ? (
-            <>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{
-                  width: 14, height: 14, borderRadius: "50%",
-                  background: teamColor,
-                  boxShadow: `0 0 8px ${teamColor}66`,
-                  flexShrink: 0,
-                }} />
-                <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>
-                  {team.name}
-                </h1>
-                {team.category && (
-                  <span style={{
-                    fontSize: 11, padding: "2px 8px", borderRadius: 12,
-                    background: hexToRgba(teamColor, 0.12),
-                    border: `1px solid ${hexToRgba(teamColor, 0.3)}`,
-                    color: teamColor, fontWeight: 600,
-                  }}>{team.category}</span>
-                )}
-              </div>
-              <p className="label-caps" style={{ marginTop: 5 }}>
-                {sessions.length} sesión{sessions.length !== 1 ? "es" : ""} en total
-              </p>
-            </>
-          ) : (
-            <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--text-primary)" }}>Sesiones del equipo</h1>
-          )}
-        </div>
-        {canEdit && (
-          <button
-            className="btn-primary"
-            style={{ marginLeft: "auto", fontSize: 13 }}
-            onClick={() => navigate(`/sessions/new?teamId=${teamId}`)}
-          >
-            + Nueva sesión
-          </button>
+    <>
+      <Topbar
+        crumbs={[{ label: "Equipos", href: "/teams" }, { label: team?.name ?? "Sesiones" }]}
+        actions={
+          canEdit ? (
+            <button className="btn-accent" onClick={() => navigate(`/sessions/new?teamId=${teamId}`)}>
+              <Icon d={PATHS.plus} size={14} color="#000" strokeWidth={2.2} /> Sesión
+            </button>
+          ) : undefined
+        }
+      />
+    <div className="page-body" style={{ maxWidth: 1000 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+        {team && (
+          <>
+            <div style={{ width: 10, height: 10, borderRadius: "50%", background: teamColor, boxShadow: `0 0 8px ${teamColor}66`, flexShrink: 0 }} />
+            {team.category && (
+              <span className="badge" style={{ background: hexToRgba(teamColor, 0.12), border: `1px solid ${hexToRgba(teamColor, 0.3)}`, color: teamColor }}>{team.category}</span>
+            )}
+          </>
         )}
+        <span className="section-label">{sessions.length} sesión{sessions.length !== 1 ? "es" : ""} en total</span>
       </div>
 
       {isLoading ? (
@@ -270,5 +248,6 @@ export default function TeamSessionsPage() {
         </div>
       )}
     </div>
+    </>
   );
 }

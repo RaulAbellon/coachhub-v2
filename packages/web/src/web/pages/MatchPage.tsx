@@ -5,6 +5,7 @@ import { ArrowLeft, Trash2, Download, MapPin, Clock, Users, FileText, Upload } f
 import { jsPDF } from "jspdf";
 import { useAuth } from "../context/AuthContext";
 import { authFetch } from "../lib/authFetch";
+import Topbar from "../components/Topbar";
 import { ADDITIONAL_COLOR } from "../lib/additional";
 import { AdditionalBadge } from "../components/AdditionalBadge";
 
@@ -38,9 +39,10 @@ interface Match {
 }
 
 function formatDateES(dateStr: string) {
-  return new Date(dateStr + "T12:00:00").toLocaleDateString("es-ES", {
+  const d = new Date(dateStr + "T12:00:00").toLocaleDateString("es-ES", {
     weekday: "long", day: "numeric", month: "long", year: "numeric",
   });
+  return d.charAt(0).toUpperCase() + d.slice(1);
 }
 
 export default function MatchPage({ id }: { id: string }) {
@@ -185,7 +187,7 @@ export default function MatchPage({ id }: { id: string }) {
     const pageW = doc.internal.pageSize.getWidth();
     const margin = 48;
     let y = 54;
-    const accent = team?.color || "#FF6B35";
+    const accent = team?.color || "#22d3ee";
 
     // Escudo
     if (team?.logoData) {
@@ -289,32 +291,37 @@ export default function MatchPage({ id }: { id: string }) {
   }
 
   const homeLabel = match.homeAway === "home" ? "Local" : "Visitante";
-  const homeColor = match.homeAway === "home" ? "#3FB950" : "#58A6FF";
+  const homeColor = match.homeAway === "home" ? "#22c55e" : "#3b82f6";
   const calledCount = callups.filter(c => c.called).length;
   const played = match.goalsFor != null && match.goalsAgainst != null;
   const win = played && match.goalsFor! > match.goalsAgainst!;
   const draw = played && match.goalsFor === match.goalsAgainst;
 
   return (
-    <div className="fade-in" style={{ maxWidth: 760, margin: "0 auto", padding: "0 0 80px" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, padding: "20px 24px", borderBottom: "1px solid var(--border)" }}>
-        <button onClick={() => navigate(match ? `/teams/${match.teamId}/matches` : "/")} style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6, fontSize: 14 }}>
-          <ArrowLeft size={18} /> Volver
-        </button>
-        <div style={{ marginLeft: "auto", display: "flex", gap: 8 }}>
-          <button className="btn-ghost" onClick={exportPDF} style={{ fontSize: 13, display: "flex", alignItems: "center", gap: 6 }}>
-            <Download size={15} /> PDF convocatoria
-          </button>
-          {canEdit && (
-            <button className="btn-ghost" onClick={() => setShowDelete(true)} style={{ fontSize: 13, color: "#FF453A", display: "flex", alignItems: "center", gap: 6 }}>
-              <Trash2 size={15} /> Eliminar
+    <>
+      <Topbar
+        crumbs={[
+          { label: "Partidos", href: match ? `/teams/${match.teamId}/matches` : "/" },
+          { label: match?.opponent || "Partido" },
+        ]}
+        actions={
+          <>
+            <button className="btn-ghost" onClick={() => navigate(match ? `/teams/${match.teamId}/matches` : "/")}>
+              <ArrowLeft size={14} /> Volver
             </button>
-          )}
-        </div>
-      </div>
+            <button className="btn-ghost" onClick={exportPDF}>
+              <Download size={14} /> PDF
+            </button>
+            {canEdit && (
+              <button className="btn-ghost" onClick={() => setShowDelete(true)} style={{ color: "#ef4444" }}>
+                <Trash2 size={14} /> Eliminar
+              </button>
+            )}
+          </>
+        }
+      />
 
-      <div style={{ padding: "24px" }}>
+      <div className="page-body" style={{ maxWidth: 860, paddingBottom: 80 }}>
         {/* Match card */}
         <div className="card" style={{ padding: "22px 24px", marginBottom: 20, borderLeft: `3px solid ${homeColor}` }}>
           <div style={{ display: "flex", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
@@ -324,7 +331,7 @@ export default function MatchPage({ id }: { id: string }) {
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", marginBottom: 6, letterSpacing: "-0.01em" }}>
             {match.opponent || "Rival por definir"}
           </h1>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", textTransform: "capitalize", marginBottom: 14 }}>{formatDateES(match.date)}</p>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 14 }}>{formatDateES(match.date)}</p>
 
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, color: "var(--text-secondary)" }}>
             {match.time && <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Clock size={14} /> Partido {match.time}h</span>}
@@ -340,7 +347,7 @@ export default function MatchPage({ id }: { id: string }) {
           {played && (
             <div style={{ display: "inline-flex", alignItems: "center", gap: 10, marginBottom: canEdit ? 16 : 0 }}>
               <span style={{ fontSize: 32, fontWeight: 800, color: "var(--text-primary)" }}>{match.goalsFor} - {match.goalsAgainst}</span>
-              <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 12px", borderRadius: 12, background: draw ? "rgba(139,139,155,0.2)" : win ? "rgba(63,185,80,0.18)" : "rgba(255,69,58,0.18)", color: draw ? "#8B8B9B" : win ? "#3FB950" : "#FF453A" }}>
+              <span style={{ fontSize: 12, fontWeight: 700, padding: "4px 12px", borderRadius: 12, background: draw ? "rgba(161,161,170,0.2)" : win ? "rgba(34,197,94,0.18)" : "rgba(239,68,68,0.18)", color: draw ? "#a1a1aa" : win ? "#22c55e" : "#ef4444" }}>
                 {draw ? "Empate" : win ? "Victoria" : "Derrota"}
               </span>
             </div>
@@ -383,7 +390,7 @@ export default function MatchPage({ id }: { id: string }) {
             )}
           </div>
 
-          {docError && <p style={{ fontSize: 12, color: "#FF453A", margin: "0 0 12px" }}>{docError}</p>}
+          {docError && <p style={{ fontSize: 12, color: "#ef4444", margin: "0 0 12px" }}>{docError}</p>}
 
           {documents.length === 0 ? (
             <p style={{ fontSize: 13, color: "var(--text-muted)", margin: 0 }}>
@@ -416,7 +423,7 @@ export default function MatchPage({ id }: { id: string }) {
                   {canEdit && (
                     <button onClick={() => deleteDoc(doc.id)} title="Eliminar" style={{
                       flexShrink: 0, display: "inline-flex", alignItems: "center", cursor: "pointer",
-                      padding: 6, borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "#FF453A",
+                      padding: 6, borderRadius: 8, border: "1px solid var(--border)", background: "transparent", color: "#ef4444",
                     }}>
                       <Trash2 size={14} />
                     </button>
@@ -444,8 +451,8 @@ export default function MatchPage({ id }: { id: string }) {
                 <div key={c.playerId} style={{
                   display: "flex", alignItems: "center", gap: 12,
                   padding: "10px 12px", borderRadius: 10,
-                  background: c.called ? "rgba(63,185,80,0.06)" : "var(--bg-secondary)",
-                  border: `1px solid ${c.called ? "rgba(63,185,80,0.25)" : "var(--border)"}`,
+                  background: c.called ? "rgba(34,197,94,0.06)" : "var(--bg-secondary)",
+                  border: `1px solid ${c.called ? "rgba(34,197,94,0.25)" : "var(--border)"}`,
                   borderLeft: c.isAdditional ? `3px solid ${ADDITIONAL_COLOR}` : undefined,
                   opacity: c.injured && !c.called ? 0.7 : 1,
                 }}>
@@ -457,7 +464,7 @@ export default function MatchPage({ id }: { id: string }) {
                     <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)", display: "flex", alignItems: "center", gap: 8 }}>
                       {c.playerName}
                       {c.isAdditional && <AdditionalBadge compact />}
-                      {c.injured && <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 10, background: "rgba(255,69,58,0.15)", color: "#FF453A" }}>Lesionado</span>}
+                      {c.injured && <span style={{ fontSize: 10, fontWeight: 700, padding: "1px 7px", borderRadius: 10, background: "rgba(239,68,68,0.15)", color: "#ef4444" }}>Lesionado</span>}
                     </div>
                     {c.playerPosition && <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 1 }}>{c.playerPosition}</div>}
                   </div>
@@ -466,15 +473,15 @@ export default function MatchPage({ id }: { id: string }) {
                       onClick={() => toggleCallup(c.playerId, !c.called)}
                       style={{
                         flexShrink: 0, fontSize: 12, fontWeight: 700, padding: "6px 14px", borderRadius: 20, cursor: "pointer",
-                        border: `1px solid ${c.called ? "rgba(63,185,80,0.5)" : "var(--border)"}`,
-                        background: c.called ? "rgba(63,185,80,0.18)" : "transparent",
-                        color: c.called ? "#3FB950" : "var(--text-muted)",
+                        border: `1px solid ${c.called ? "rgba(34,197,94,0.5)" : "var(--border)"}`,
+                        background: c.called ? "rgba(34,197,94,0.18)" : "transparent",
+                        color: c.called ? "#22c55e" : "var(--text-muted)",
                         transition: "all 0.15s",
                       }}>
                       {c.called ? "✓ Convocado" : "Convocar"}
                     </button>
                   ) : (
-                    <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, color: c.called ? "#3FB950" : "var(--text-muted)" }}>
+                    <span style={{ flexShrink: 0, fontSize: 12, fontWeight: 700, color: c.called ? "#22c55e" : "var(--text-muted)" }}>
                       {c.called ? "Convocado" : "No"}
                     </span>
                   )}
@@ -483,7 +490,6 @@ export default function MatchPage({ id }: { id: string }) {
             </div>
           )}
         </div>
-      </div>
 
       {/* Delete modal */}
       {showDelete && (
@@ -503,6 +509,7 @@ export default function MatchPage({ id }: { id: string }) {
         </div>
       )}
     </div>
+    </>
   );
 }
 

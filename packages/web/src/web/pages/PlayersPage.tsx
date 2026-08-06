@@ -1,8 +1,10 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams, useLocation } from "wouter";
+import { useParams } from "wouter";
 import { useAuth } from "../context/AuthContext";
 import { useIsMobile } from "../hooks/useIsMobile";
+import Topbar from "../components/Topbar";
+import { Icon, PATHS } from "../components/icons";
 import { playerWord } from "../lib/gender";
 import { authFetch } from "../lib/authFetch";
 import { ADDITIONAL_COLOR, ADDITIONAL_DIM } from "../lib/additional";
@@ -100,7 +102,6 @@ type PanelView = "ficha" | "lesiones";
 export default function PlayersPage({ params }: { params?: { teamId?: string } }) {
   const routeParams = useParams<{ teamId: string }>();
   const teamId = Number(params?.teamId || routeParams.teamId);
-  const [, navigate] = useLocation();
   const { token } = useAuth();
   const qc = useQueryClient();
   const isMobile = useIsMobile();
@@ -338,21 +339,22 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
   const team = teamData?.team;
 
   return (
-    <div className="fade-in" style={{ padding: isMobile ? "16px" : "32px 40px", maxWidth: 1100, margin: "0 auto", boxSizing: "border-box", width: "100%" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: isMobile ? 18 : 28, flexWrap: "wrap" }}>
-        <button className="btn-ghost" onClick={() => navigate("/teams")} style={{ padding: "6px 10px", fontSize: 13, flexShrink: 0 }}>← Volver</button>
-        <div style={{ flex: "1 1 auto", minWidth: 0 }}>
-          <h1 style={{ fontSize: isMobile ? 19 : 24, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {team?.name || playerWord(team?.gender, true, true)}
-          </h1>
-          <p className="label-caps" style={{ marginTop: 4 }}>{players.length} {playerWord(team?.gender, players.length !== 1)}</p>
-        </div>
-        <button className="btn-primary" onClick={() => { setEditPlayer(null); setForm(emptyPlayerForm()); setCustomForm({}); setSaveError(""); setShowAddPlayer(true); }}
-          style={isMobile ? { flex: "1 1 100%", justifyContent: "center", order: 3 } : {}}>
-          + Añadir {playerWord(team?.gender, false)}
-        </button>
-      </div>
+    <>
+      <Topbar
+        crumbs={[{ label: "Equipos", href: "/teams" }, { label: team?.name || playerWord(team?.gender, true, true) }]}
+        actions={
+          <button
+            className="btn-accent"
+            onClick={() => { setEditPlayer(null); setForm(emptyPlayerForm()); setCustomForm({}); setSaveError(""); setShowAddPlayer(true); }}
+          >
+            <Icon d={PATHS.plus} size={14} color="#000" strokeWidth={2.2} /> {playerWord(team?.gender, false)}
+          </button>
+        }
+      />
+    <div className="page-body">
+      <p className="section-label" style={{ marginBottom: 14 }}>
+        {players.length} {playerWord(team?.gender, players.length !== 1)}
+      </p>
 
       <div style={{ display: "flex", gap: 20, flexDirection: isMobile ? "column" : "row" }}>
         {/* ── Players list ─────────────────────────────────────────────────── */}
@@ -361,10 +363,12 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
             <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>Cargando...</p>
           ) : players.length === 0 ? (
             <div className="card" style={{ padding: 40, textAlign: "center" }}>
-              <p style={{ fontSize: 28, marginBottom: 12 }}>👥</p>
+              <div style={{ display: "flex", justifyContent: "center", marginBottom: 12, opacity: 0.4 }}>
+                <Icon d={PATHS.players} size={34} />
+              </div>
               <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Sin {playerWord(team?.gender, true)}</h3>
               <p style={{ color: "var(--text-secondary)", fontSize: 13, marginBottom: 20 }}>Añade {team?.gender === "masculino" ? "los" : "las"} {playerWord(team?.gender, true)} del equipo</p>
-              <button className="btn-primary" onClick={() => setShowAddPlayer(true)}>+ Añadir {playerWord(team?.gender, false)}</button>
+              <button className="btn-accent" onClick={() => setShowAddPlayer(true)}>+ Añadir {playerWord(team?.gender, false)}</button>
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -394,7 +398,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
                     }}>
                       {player.photoData ? (
                         <img src={player.photoData} alt={player.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                      ) : "👤"}
+                      ) : <Icon d={PATHS.players} size={18} color="var(--text-muted)" />}
                     </div>
 
                     {/* Dorsal */}
@@ -715,7 +719,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
           )}
 
           {saveError && (
-            <p style={{ fontSize: 12, color: "#FF3B30", marginTop: 14 }}>{saveError}</p>
+            <p style={{ fontSize: 12, color: "#ef4444", marginTop: 14 }}>{saveError}</p>
           )}
 
           <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
@@ -769,12 +773,13 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
       {pdfPlayer && (
         <PdfExportModal
           player={pdfPlayer}
-          teamColor={team?.color || "#FF6B35"}
+          teamColor={team?.color || "#22d3ee"}
           token={token}
           onClose={() => setPdfPlayer(null)}
         />
       )}
     </div>
+    </>
   );
 }
 
@@ -842,7 +847,7 @@ function PdfExportModal({ player, teamColor, token, onClose }: {
         Todo el histórico
       </button>
 
-      {error && <p style={{ fontSize: 12, color: "#FF3B30", marginTop: 14 }}>{error}</p>}
+      {error && <p style={{ fontSize: 12, color: "#ef4444", marginTop: 14 }}>{error}</p>}
 
       <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
         <button className="btn-ghost" onClick={onClose}>Cancelar</button>
@@ -872,9 +877,9 @@ function formatDate(dateStr: string | null): string {
 }
 
 const HEALTH_COLORS: Record<string, string> = {
-  enfermedades: "#FF6B35",
-  lesiones: "#FF9500",
-  alergias: "#FF3B30",
+  enfermedades: "#22d3ee",
+  lesiones: "#f97316",
+  alergias: "#ef4444",
 };
 
 // Claves ya representadas en la cabecera del panel del jugador.
@@ -1002,8 +1007,8 @@ function FichaTab({ player, fields, onEdit, onDelete, onExportPdf }: {
           <button onClick={() => setConfirmDelete(true)}
             style={{
               flex: 1, padding: "7px 0", fontSize: 12, borderRadius: 8,
-              border: "1px solid #FF3B3033", background: "#FF3B3011",
-              color: "#FF3B30", cursor: "pointer",
+              border: "1px solid #ef444433", background: "#ef444411",
+              color: "#ef4444", cursor: "pointer",
             }}>Eliminar</button>
         ) : (
           <div style={{ display: "flex", gap: 6, flex: 1 }}>
@@ -1011,7 +1016,7 @@ function FichaTab({ player, fields, onEdit, onDelete, onExportPdf }: {
             <button onClick={onDelete}
               style={{
                 flex: 1, padding: "7px 0", fontSize: 11, borderRadius: 8,
-                border: "none", background: "#FF3B30", color: "#fff", cursor: "pointer",
+                border: "none", background: "#ef4444", color: "#fff", cursor: "pointer",
               }}>Sí, eliminar</button>
           </div>
         )}
@@ -1136,7 +1141,7 @@ function LesionesTab({
         <>
           {active.length > 0 && (
             <>
-              <p style={{ fontSize: 10, fontWeight: 700, color: "#FF3B30", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>Activas</p>
+              <p style={{ fontSize: 10, fontWeight: 700, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>Activas</p>
               {active.map(inj => <InjuryCard key={inj.id} inj={inj} onEdit={onEdit} onResolve={onResolve} onDelete={onDelete} duration={injuryDuration(inj)} />)}
             </>
           )}
@@ -1157,13 +1162,13 @@ function InjuryCard({ inj, onEdit, onResolve, onDelete, duration }: {
   onDelete: (id: number) => void; duration: string;
 }) {
   const [showDel, setShowDel] = useState(false);
-  const color = inj.resolved ? "var(--text-muted)" : "#FF3B30";
+  const color = inj.resolved ? "var(--text-muted)" : "#ef4444";
 
   return (
     <div style={{
       padding: "10px 12px", borderRadius: 8, marginBottom: 8,
       background: "var(--bg-secondary)",
-      border: `1px solid ${inj.resolved ? "var(--border)" : "#FF3B3033"}`,
+      border: `1px solid ${inj.resolved ? "var(--border)" : "#ef444433"}`,
       opacity: inj.resolved ? 0.65 : 1,
     }}>
       <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}>
@@ -1202,13 +1207,13 @@ function InjuryCard({ inj, onEdit, onResolve, onDelete, duration }: {
           </button>
           {!showDel ? (
             <button onClick={() => setShowDel(true)}
-              style={{ fontSize: 10, padding: "3px 8px", background: "none", border: "1px solid #FF3B3033", borderRadius: 6, cursor: "pointer", color: "#FF3B30" }}>
+              style={{ fontSize: 10, padding: "3px 8px", background: "none", border: "1px solid #ef444433", borderRadius: 6, cursor: "pointer", color: "#ef4444" }}>
               Borrar
             </button>
           ) : (
             <div style={{ display: "flex", gap: 3 }}>
               <button onClick={() => setShowDel(false)} style={{ fontSize: 10, padding: "3px 6px", background: "var(--bg-secondary)", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--text-muted)" }}>No</button>
-              <button onClick={() => onDelete(inj.id)} style={{ fontSize: 10, padding: "3px 6px", background: "#FF3B30", border: "none", borderRadius: 6, cursor: "pointer", color: "#fff" }}>Sí</button>
+              <button onClick={() => onDelete(inj.id)} style={{ fontSize: 10, padding: "3px 6px", background: "#ef4444", border: "none", borderRadius: 6, cursor: "pointer", color: "#fff" }}>Sí</button>
             </div>
           )}
         </div>

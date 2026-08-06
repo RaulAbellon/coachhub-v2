@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
+import Topbar from "../components/Topbar";
 import { useAuth } from "../context/AuthContext";
 import { authFetch } from "../lib/authFetch";
 
@@ -126,16 +127,9 @@ export default function ProfilePage() {
   const otherTeams = teams.filter(t => t.role !== "owner");
 
   return (
-    <div className="fade-in" style={{ padding: "24px 16px 40px", maxWidth: 640, margin: "0 auto", boxSizing: "border-box", width: "100%" }}>
-      {/* Header */}
-      <div style={{ marginBottom: 28 }}>
-        <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em", marginBottom: 4 }}>
-          Perfil
-        </h1>
-        <p style={{ fontSize: 13, color: "var(--text-secondary)" }}>
-          Tu cuenta y equipos
-        </p>
-      </div>
+    <>
+      <Topbar crumbs={[{ label: "Perfil" }]} />
+    <div className="page-body" style={{ maxWidth: 680 }}>
 
       {/* Account card */}
       <div className="card" style={{ padding: 20, marginBottom: 20, display: "flex", alignItems: "center", gap: 14 }}>
@@ -306,7 +300,7 @@ export default function ProfilePage() {
                 </div>
               )}
               {pwdSuccess && (
-                <div style={{ fontSize: 13, color: "#3FB950", marginBottom: 12 }}>
+                <div style={{ fontSize: 13, color: "#22c55e", marginBottom: 12 }}>
                   Contraseña actualizada correctamente
                 </div>
               )}
@@ -334,6 +328,7 @@ export default function ProfilePage() {
         Cerrar sesión
       </button>
     </div>
+    </>
   );
 }
 

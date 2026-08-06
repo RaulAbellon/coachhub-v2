@@ -3,6 +3,8 @@ import { useLocation, useParams } from "wouter";
 import { MapPin, Clock } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { authFetch } from "../lib/authFetch";
+import Topbar from "../components/Topbar";
+import { Icon, PATHS } from "../components/icons";
 
 function hexToRgba(hex: string, alpha: number) {
   const r = parseInt(hex.slice(1, 3), 16);
@@ -25,7 +27,7 @@ interface Match {
 }
 
 function MatchRow({ m, onClick }: { m: Match; onClick: () => void }) {
-  const homeColor = m.homeAway === "home" ? "#3FB950" : "#58A6FF";
+  const homeColor = m.homeAway === "home" ? "#22c55e" : "#3b82f6";
   const played = m.goalsFor != null && m.goalsAgainst != null;
   const win = played && m.goalsFor! > m.goalsAgainst!;
   const draw = played && m.goalsFor === m.goalsAgainst;
@@ -58,8 +60,8 @@ function MatchRow({ m, onClick }: { m: Match; onClick: () => void }) {
       {played ? (
         <span style={{
           fontSize: 14, fontWeight: 800, padding: "4px 12px", borderRadius: 10, flexShrink: 0,
-          background: draw ? "rgba(139,139,155,0.18)" : win ? "rgba(63,185,80,0.16)" : "rgba(255,69,58,0.16)",
-          color: draw ? "#8B8B9B" : win ? "#3FB950" : "#FF453A",
+          background: draw ? "rgba(161,161,170,0.18)" : win ? "rgba(34,197,94,0.16)" : "rgba(239,68,68,0.16)",
+          color: draw ? "#a1a1aa" : win ? "#22c55e" : "#ef4444",
         }}>{m.goalsFor} - {m.goalsAgainst}</span>
       ) : (
         <span style={{ color: "var(--text-muted)", fontSize: 16 }}>›</span>
@@ -94,7 +96,7 @@ export default function TeamMatchesPage() {
 
   const teams = teamsData?.teams ?? [];
   const team = teams.find((t: any) => t.id === teamId);
-  const teamColor = team?.color || "#FF6B35";
+  const teamColor = team?.color || "#22d3ee";
   const canEdit = team?.role === "owner" || team?.role === "editor";
 
   const allMatches = data?.matches ?? [];
@@ -103,36 +105,28 @@ export default function TeamMatchesPage() {
   const past = allMatches.filter(m => m.date < today).sort((a, b) => b.date.localeCompare(a.date));
 
   return (
-    <div className="fade-in" style={{ padding: "32px 40px", maxWidth: 860, margin: "0 auto" }}>
-      {/* Header */}
-      <div style={{ display: "flex", alignItems: "center", gap: 14, marginBottom: 28 }}>
-        <button
-          onClick={() => navigate("/teams")}
-          style={{ background: "none", border: "none", cursor: "pointer", color: "var(--text-muted)", fontSize: 22, lineHeight: 1, padding: 0 }}
-        >←</button>
-        <div>
-          {team ? (
-            <>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <div style={{ width: 14, height: 14, borderRadius: "50%", background: teamColor, boxShadow: `0 0 8px ${teamColor}66`, flexShrink: 0 }} />
-                <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--text-primary)", letterSpacing: "-0.02em" }}>{team.name}</h1>
-                {team.category && (
-                  <span style={{ fontSize: 11, padding: "2px 8px", borderRadius: 12, background: hexToRgba(teamColor, 0.12), border: `1px solid ${hexToRgba(teamColor, 0.3)}`, color: teamColor, fontWeight: 600 }}>{team.category}</span>
-                )}
-              </div>
-              <p className="label-caps" style={{ marginTop: 5 }}>
-                {allMatches.length} partido{allMatches.length !== 1 ? "s" : ""} en total
-              </p>
-            </>
-          ) : (
-            <h1 style={{ fontSize: 24, fontWeight: 800, color: "var(--text-primary)" }}>Partidos del equipo</h1>
-          )}
-        </div>
-        {canEdit && (
-          <button className="btn-primary" style={{ marginLeft: "auto", fontSize: 13 }} onClick={() => navigate(`/matches/new?teamId=${teamId}`)}>
-            + Nuevo partido
-          </button>
+    <>
+      <Topbar
+        crumbs={[{ label: "Equipos", href: "/teams" }, { label: team?.name ?? "Partidos" }]}
+        actions={
+          canEdit ? (
+            <button className="btn-accent" onClick={() => navigate(`/matches/new?teamId=${teamId}`)}>
+              <Icon d={PATHS.plus} size={14} color="#000" strokeWidth={2.2} /> Partido
+            </button>
+          ) : undefined
+        }
+      />
+    <div className="page-body" style={{ maxWidth: 1000 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 20, flexWrap: "wrap" }}>
+        {team && (
+          <>
+            <div style={{ width: 10, height: 10, borderRadius: "50%", background: teamColor, boxShadow: `0 0 8px ${teamColor}66`, flexShrink: 0 }} />
+            {team.category && (
+              <span className="badge" style={{ background: hexToRgba(teamColor, 0.12), border: `1px solid ${hexToRgba(teamColor, 0.3)}`, color: teamColor }}>{team.category}</span>
+            )}
+          </>
         )}
+        <span className="section-label">{allMatches.length} partido{allMatches.length !== 1 ? "s" : ""} en total</span>
       </div>
 
       {isLoading ? (
@@ -171,5 +165,6 @@ export default function TeamMatchesPage() {
         </div>
       )}
     </div>
+    </>
   );
 }

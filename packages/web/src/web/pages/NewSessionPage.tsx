@@ -3,12 +3,13 @@ import { useLocation } from "wouter";
 import { ArrowLeft, Upload, FileText, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { authFetch } from "../lib/authFetch";
+import Topbar from "../components/Topbar";
 
 const SESSION_TYPES = [
-  { value: "ataque",      label: "Ataque",               color: "#FF6B35" },
-  { value: "defensa",     label: "Defensa",               color: "#58A6FF" },
-  { value: "transicion",  label: "Transición",            color: "#3FB950" },
-  { value: "preparacion", label: "Preparación de partido", color: "#BC8CFF" },
+  { value: "ataque",      label: "Ataque",               color: "#22d3ee" },
+  { value: "defensa",     label: "Defensa",               color: "#3b82f6" },
+  { value: "transicion",  label: "Transición",            color: "#22c55e" },
+  { value: "preparacion", label: "Preparación de partido", color: "#a855f7" },
 ];
 
 export default function NewSessionPage() {
@@ -155,37 +156,34 @@ export default function NewSessionPage() {
   };
 
   const inputStyle: React.CSSProperties = {
-    background: "#1C2333",
-    border: "1px solid #30363D",
-    color: "#E6EDF3",
+    background: "var(--bg-surface)",
+    border: "1px solid rgba(255,255,255,0.06)",
+    color: "var(--text-primary)",
   };
 
   return (
-    <div className="min-h-screen" style={{ background: "#0D1117", color: "#E6EDF3" }}>
-      {/* Header */}
-      <div className="flex items-center gap-4 px-6 py-4 border-b" style={{ borderColor: "#30363D" }}>
-        <button
-          onClick={() => window.history.back()}
-          className="flex items-center gap-2 text-sm transition-opacity hover:opacity-70"
-          style={{ color: "#8B8B9B" }}
-        >
-          <ArrowLeft size={18} />
-          Volver
-        </button>
-        <h1 className="text-lg font-semibold tracking-wide uppercase">Nueva Sesión</h1>
-      </div>
+    <>
+      <Topbar
+        crumbs={[{ label: "Nueva sesión" }]}
+        actions={
+          <button className="btn-ghost" onClick={() => window.history.back()}>
+            <ArrowLeft size={14} /> Volver
+          </button>
+        }
+      />
+    <div style={{ color: "var(--text-primary)" }}>
 
       <div className="max-w-2xl mx-auto px-6 py-8 space-y-6">
         {/* Error */}
         {error && (
-          <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "#2D1B1B", color: "#F85149", border: "1px solid #5A1D1D" }}>
+          <div className="px-4 py-3 rounded-lg text-sm" style={{ background: "rgba(239,68,68,0.12)", color: "#ef4444", border: "1px solid rgba(239,68,68,0.3)" }}>
             {error}
           </div>
         )}
 
         {/* Título */}
         <div>
-          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Título *</label>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Título *</label>
           <input
             type="text"
             value={title}
@@ -198,7 +196,7 @@ export default function NewSessionPage() {
 
         {/* Tipo de sesión */}
         <div>
-          <label className="block text-xs uppercase tracking-widest mb-3" style={{ color: "#8B8B9B" }}>Tipo de sesión</label>
+          <label className="block text-xs uppercase tracking-widest mb-3" style={{ color: "var(--text-secondary)" }}>Tipo de sesión</label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {SESSION_TYPES.map((t) => {
               const selected = sessionType === t.value;
@@ -207,9 +205,9 @@ export default function NewSessionPage() {
                   key={t.value}
                   onClick={() => setSessionType(t.value)}
                   style={{
-                    background: selected ? `${t.color}20` : "#1C2333",
-                    border: `2px solid ${selected ? t.color : "#30363D"}`,
-                    color: selected ? t.color : "#8B8B9B",
+                    background: selected ? `${t.color}20` : "var(--bg-surface)",
+                    border: `2px solid ${selected ? t.color : "var(--border)"}`,
+                    color: selected ? t.color : "var(--text-secondary)",
                     borderRadius: 10,
                     padding: "12px 16px",
                     fontSize: 13,
@@ -233,7 +231,7 @@ export default function NewSessionPage() {
         {/* Fecha + Duración */}
         <div className="grid grid-cols-2 gap-4">
           <div>
-            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Fecha</label>
+            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Fecha</label>
             <input
               type="date"
               value={date}
@@ -243,7 +241,7 @@ export default function NewSessionPage() {
             />
           </div>
           <div>
-            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Duración (min)</label>
+            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Duración (min)</label>
             <input
               type="number"
               value={duration}
@@ -257,12 +255,12 @@ export default function NewSessionPage() {
 
         {/* Equipo */}
         {teamsLoaded && teams.length === 0 ? (
-          <div className="px-4 py-4 rounded-lg text-sm" style={{ background: "#2D1B1B", color: "#F0B8B8", border: "1px solid #5A1D1D" }}>
-            Todavía no tienes ningún equipo. <button onClick={() => navigate("/teams")} style={{ color: "#FF6B35", textDecoration: "underline", fontWeight: 600 }}>Crea uno primero</button> para poder registrar sesiones.
+          <div className="px-4 py-4 rounded-lg text-sm" style={{ background: "rgba(239,68,68,0.1)", color: "#fca5a5", border: "1px solid rgba(239,68,68,0.25)" }}>
+            Todavía no tienes ningún equipo. <button onClick={() => navigate("/teams")} style={{ color: "#22d3ee", textDecoration: "underline", fontWeight: 600 }}>Crea uno primero</button> para poder registrar sesiones.
           </div>
         ) : (
           <div>
-            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Equipo *</label>
+            <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Equipo *</label>
             <select
               value={teamId}
               onChange={(e) => setTeamId(e.target.value ? Number(e.target.value) : "")}
@@ -279,7 +277,7 @@ export default function NewSessionPage() {
 
         {/* Objetivos */}
         <div>
-          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Objetivos</label>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Objetivos</label>
           <textarea
             value={objectives}
             onChange={(e) => setObjectives(e.target.value)}
@@ -292,7 +290,7 @@ export default function NewSessionPage() {
 
         {/* Notas */}
         <div>
-          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>Notas</label>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>Notas</label>
           <textarea
             value={notes}
             onChange={(e) => setNotes(e.target.value)}
@@ -305,16 +303,16 @@ export default function NewSessionPage() {
 
         {/* PDF Pista */}
         <div>
-          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>
             PDF Sesión de Pista
           </label>
           {pdfData ? (
-            <div className="flex items-center justify-between px-4 py-3 rounded-lg" style={{ background: "#1C2333", border: "1px solid #30363D" }}>
+            <div className="flex items-center justify-between px-4 py-3 rounded-lg" style={{ background: "var(--bg-surface)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <div className="flex items-center gap-3">
-                <FileText size={20} style={{ color: "#FF6B35" }} />
+                <FileText size={20} style={{ color: "#22d3ee" }} />
                 <span className="text-sm truncate max-w-xs">{pdfName}</span>
               </div>
-              <button onClick={removePdf} className="transition-opacity hover:opacity-70" style={{ color: "#8B8B9B" }}>
+              <button onClick={removePdf} className="transition-opacity hover:opacity-70" style={{ color: "var(--text-secondary)" }}>
                 <X size={18} />
               </button>
             </div>
@@ -324,11 +322,11 @@ export default function NewSessionPage() {
               onDragOver={(e) => e.preventDefault()}
               onClick={() => fileInputRef.current?.click()}
               className="flex flex-col items-center justify-center gap-3 px-6 py-10 rounded-lg cursor-pointer"
-              style={{ background: "#1C2333", border: "2px dashed #30363D" }}
+              style={{ background: "var(--bg-surface)", border: "2px dashed rgba(255,255,255,0.06)" }}
             >
-              <Upload size={28} style={{ color: "#8B8B9B" }} />
-              <p className="text-sm" style={{ color: "#8B8B9B" }}>
-                Arrastra un PDF aquí o <span style={{ color: "#FF6B35" }}>haz clic para seleccionar</span>
+              <Upload size={28} style={{ color: "var(--text-secondary)" }} />
+              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                Arrastra un PDF aquí o <span style={{ color: "#22d3ee" }}>haz clic para seleccionar</span>
               </p>
             </div>
           )}
@@ -337,16 +335,16 @@ export default function NewSessionPage() {
 
         {/* PDF Físico */}
         <div>
-          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "#8B8B9B" }}>
+          <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>
             PDF Preparación Física <span style={{ color: "#4A4A5A", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(opcional)</span>
           </label>
           {physicalPdfData ? (
-            <div className="flex items-center justify-between px-4 py-3 rounded-lg" style={{ background: "#1C2333", border: "1px solid #30363D" }}>
+            <div className="flex items-center justify-between px-4 py-3 rounded-lg" style={{ background: "var(--bg-surface)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <div className="flex items-center gap-3">
-                <FileText size={20} style={{ color: "#58A6FF" }} />
+                <FileText size={20} style={{ color: "#3b82f6" }} />
                 <span className="text-sm truncate max-w-xs">{physicalPdfName}</span>
               </div>
-              <button onClick={removePhysicalPdf} className="transition-opacity hover:opacity-70" style={{ color: "#8B8B9B" }}>
+              <button onClick={removePhysicalPdf} className="transition-opacity hover:opacity-70" style={{ color: "var(--text-secondary)" }}>
                 <X size={18} />
               </button>
             </div>
@@ -356,11 +354,11 @@ export default function NewSessionPage() {
               onDragOver={(e) => e.preventDefault()}
               onClick={() => physicalFileInputRef.current?.click()}
               className="flex flex-col items-center justify-center gap-3 px-6 py-8 rounded-lg cursor-pointer"
-              style={{ background: "#1C2333", border: "2px dashed #30363D" }}
+              style={{ background: "var(--bg-surface)", border: "2px dashed rgba(255,255,255,0.06)" }}
             >
-              <Upload size={24} style={{ color: "#8B8B9B" }} />
-              <p className="text-sm" style={{ color: "#8B8B9B" }}>
-                Arrastra el PDF de físico aquí o <span style={{ color: "#58A6FF" }}>haz clic para seleccionar</span>
+              <Upload size={24} style={{ color: "var(--text-secondary)" }} />
+              <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
+                Arrastra el PDF de físico aquí o <span style={{ color: "#3b82f6" }}>haz clic para seleccionar</span>
               </p>
             </div>
           )}
@@ -372,11 +370,12 @@ export default function NewSessionPage() {
           onClick={handleSave}
           disabled={saving || !title.trim() || !teamId}
           className="w-full py-4 rounded-lg font-semibold text-sm uppercase tracking-widest transition-opacity"
-          style={{ background: "#FF6B35", color: "#0D1117", opacity: (saving || !title.trim() || !teamId) ? 0.5 : 1 }}
+          style={{ background: "var(--accent)", color: "#000", opacity: (saving || !title.trim() || !teamId) ? 0.5 : 1 }}
         >
           {saving ? "Guardando..." : "Guardar Sesión"}
         </button>
       </div>
     </div>
+    </>
   );
 }

@@ -197,3 +197,39 @@ PlayersPage/SessionPage/CalendarPage: refactor grande y arriesgado, no compensa 
   (1440 y 375) sin errores nuevos (solo 401 esperados de /api/auth/me pre-login).
 - Datos de prueba limpiados. Nota: siguen en la BD usuarios de pruebas antiguas
   (auditortest, equipoprueba, g1786022782) y equipos 22/23/24 — ya estaban antes, no se tocan.
+
+## 2026-08-08 — Feature: navegador de microciclos (spec CoachHub_Feature_Microciclos)
+
+Implementado el spec con dos correcciones sobre el texto original:
+1. El `MicrocycleWidget` del spec tenía un bug: `sessionByDate` se autoreferenciaba en su
+   propia inicialización (ReferenceError en runtime). Reescrito.
+2. El spec pintaba horas inventadas (`16:00 + índice`) para las sesiones: `sessions` no tiene
+   columna `time`. El widget muestra ahora sesiones (duración) + partidos (hora real).
+
+Decisión de diseño: el número de MC NO es el índice de semana del mes (como proponía el spec),
+sino el microciclo real de las sesiones (`sessions.microcycle`), para que coincida con los badges
+"MC n" del resto de la app. Lógica en `src/web/lib/microcycles.ts`: por cada lunes del mes se toma
+el microciclo más frecuente de sus sesiones; las semanas sin sesiones se extrapolan desde la más
+cercana conocida; si el mes está vacío se numeran 1..N.
+
+Ficheros:
+- NUEVO `src/web/lib/microcycles.ts` — getMonday, getWeekDates, toISODate, monthMicrocycles,
+  findMicrocycleIndex.
+- NUEVO `src/web/lib/__tests__/microcycles.test.ts` — 10 tests (vitest.config.ts ampliado para
+  incluir `src/web/**/__tests__`).
+- NUEVO `src/web/components/McSelector.tsx` — pills + flechas + "Todos", prop `labels` para los
+  números reales y `currentMc` (punto que marca el MC actual para acceso rápido).
+- NUEVO `src/web/components/MicrocycleWidget.tsx` — widget del dashboard: cabecera MC + badge
+  ACTUAL + badges de equipos, grid de 7 días con puntos (círculo = sesión, cuadrado = partido),
+  lista de actividades del día seleccionado. En móvil el selector va en fila scrolleable propia.
+- `pages/DashboardPage.tsx` — widget entre StatsStrip y el two-col.
+- `pages/CalendarPage.tsx` — estado `activeMc` (0 = mes completo), selector en Topbar desktop y
+  en fila scrolleable en móvil, días fuera del MC a opacity 0.25, resaltado del MC activo, reset
+  del filtro al cambiar de mes y **las listas de "Partidos"/"Sesiones" de abajo también se filtran
+  por el MC activo** (antes seguían mostrando el mes entero, era incoherente).
+- No se implementa el endpoint opcional `/api/sessions/mc` (Cambio 5): el frontend ya filtra por
+  fechas, no aporta nada al MVP.
+
+Verificado: `bunx tsc -b --force` OK, `bun run build` OK, `bunx vitest run` 26/26,
+`scripts/verify_microcycles.py` (NUEVO) en Chrome a 1440 y 375 → 16/16 checks OK, sin errores de
+consola nuevos (solo los 401 esperados de /api/auth/me pre-login). Datos de prueba limpiados.

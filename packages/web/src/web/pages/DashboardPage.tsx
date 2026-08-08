@@ -7,6 +7,7 @@ import StatsStrip, { StatCard } from "../components/StatsStrip";
 import TeamCardCompact, { AddTeamCard, type TeamCardData } from "../components/TeamCardCompact";
 import UpcomingEvents, { type UpcomingEvent } from "../components/UpcomingEvents";
 import SessionsTable, { type SessionRowData } from "../components/SessionsTable";
+import MicrocycleWidget from "../components/MicrocycleWidget";
 import { SectionLabel, LinkAction } from "../components/Panel";
 import { Icon, PATHS } from "../components/icons";
 import { useIsMobile } from "../hooks/useIsMobile";
@@ -74,6 +75,11 @@ export default function DashboardPage() {
             label="Asistencia"
           />
         </StatsStrip>
+
+        {/* Microciclo actual */}
+        <div style={{ marginTop: 24 }}>
+          <MicrocycleWidget />
+        </div>
 
         <div className="two-col" style={{ marginTop: 24 }}>
           <section>

@@ -7,6 +7,8 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import Topbar, { ViewToggle } from "../components/Topbar";
 import { sessionStyle, hexToRgba, MATCH_COLOR } from "../lib/sessionTypes";
 import { Icon, PATHS } from "../components/icons";
+import McSelector from "../components/McSelector";
+import { monthMicrocycles, findMicrocycleIndex } from "../lib/microcycles";
 
 const DAYS_DESKTOP = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const DAYS_MOBILE  = ["L",   "M",   "X",   "J",   "V",   "S",   "D"];
@@ -63,6 +65,7 @@ export default function CalendarPage() {
   const isMobile = useIsMobile();
   const [currentDate, setCurrentDate] = useState(new Date(today.getFullYear(), today.getMonth(), 1));
   const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [activeMc, setActiveMc] = useState(0);
   const [, navigate] = useLocation();
   const { user, token } = useAuth();
 
@@ -111,8 +114,29 @@ export default function CalendarPage() {
   const firstDay    = getFirstDayOfMonth(year, month);
   const todayStr    = `${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,"0")}-${String(today.getDate()).padStart(2,"0")}`;
 
-  const prevMonth = () => { setSelectedDay(null); setCurrentDate(new Date(year, month - 1, 1)); };
-  const nextMonth = () => { setSelectedDay(null); setCurrentDate(new Date(year, month + 1, 1)); };
+  // ── MICROCICLOS ──
+  // activeMc: 0 = mes completo (sin filtro), 1..N = microciclo concreto.
+  const mcWeeks = monthMicrocycles(year, month, sessions);
+  const currentMcIdx = findMicrocycleIndex(mcWeeks, todayStr);
+  const activeMcWeek = activeMc > 0 ? mcWeeks[activeMc - 1] : undefined;
+  const activeMcDates = new Set(activeMcWeek?.dates ?? []);
+  const inActiveMcDate = (d: string) => activeMc === 0 || activeMcDates.has(d);
+  const listSessions = sessions.filter(s => inActiveMcDate(s.date));
+  const listMatches  = matches.filter(m => inActiveMcDate(m.date));
+  const scopeLabel = activeMc > 0 ? `MC ${activeMcWeek?.label}` : "Este mes";
+  const mcSelector = (
+    <McSelector
+      activeMc={activeMc}
+      onChange={setActiveMc}
+      totalMc={mcWeeks.length}
+      labels={mcWeeks.map(w => w.label)}
+      currentMc={currentMcIdx >= 0 ? currentMcIdx + 1 : undefined}
+      compact
+    />
+  );
+
+  const prevMonth = () => { setSelectedDay(null); setActiveMc(0); setCurrentDate(new Date(year, month - 1, 1)); };
+  const nextMonth = () => { setSelectedDay(null); setActiveMc(0); setCurrentDate(new Date(year, month + 1, 1)); };
 
   const handleDayClick = (dateStr: string) => {
     setSelectedDay(prev => prev === dateStr ? null : dateStr);
@@ -304,6 +328,8 @@ export default function CalendarPage() {
             <>
               {monthNav}
               <div style={{ width: 1, height: 24, background: "var(--border)", margin: "0 4px" }} />
+              {mcSelector}
+              <div style={{ width: 1, height: 24, background: "var(--border)", margin: "0 4px" }} />
               <ViewToggle
                 value="calendar"
                 options={[
@@ -323,6 +349,13 @@ export default function CalendarPage() {
       />
 
     <div className="page-body" style={{ position: "relative" }}>
+      {/* ── SELECTOR DE MICROCICLO (solo móvil) ── */}
+      {isMobile && mcWeeks.length > 0 && (
+        <div style={{ display: "flex", overflowX: "auto", paddingBottom: 12, scrollbarWidth: "none" }}>
+          {mcSelector}
+        </div>
+      )}
+
       {/* ── TEAM LEGEND (desktop only) ── */}
       {!isMobile && teams.length > 0 && (
         <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 18 }}>
@@ -405,7 +438,14 @@ export default function CalendarPage() {
               const isSelected = dateStr === selectedDay;
               const col      = (firstDay + i) % 7;
               const isWeekend = col >= 5;
-              const baseBg = isSelected ? "rgba(34,211,238,0.08)" : isWeekend ? "rgba(59,130,246,0.05)" : "transparent";
+              const inActiveMc = activeMc === 0 || activeMcDates.has(dateStr);
+              const dimmed = !inActiveMc;
+              const highlightMc = activeMc > 0 && inActiveMc;
+              const baseBg = isSelected
+                ? "rgba(34,211,238,0.08)"
+                : inActiveMc && isWeekend
+                  ? "rgba(59,130,246,0.05)"
+                  : "transparent";
 
               return (
                 <div
@@ -418,7 +458,8 @@ export default function CalendarPage() {
                     borderBottom: "1px solid var(--border)",
                     cursor: "pointer",
                     background: baseBg,
-                    transition: "background 0.15s",
+                    opacity: dimmed ? 0.25 : 1,
+                    transition: "background 0.15s, opacity 0.15s",
                     outline: isSelected ? "1.5px solid var(--accent)" : "none",
                     outlineOffset: -1,
                     display: "flex",
@@ -439,11 +480,15 @@ export default function CalendarPage() {
                     width: isMobile ? 28 : 26,
                     height: isMobile ? 28 : 26,
                     borderRadius: "50%",
-                    background: isToday ? "var(--accent)" : "transparent",
+                    background: isToday
+                      ? "var(--accent)"
+                      : highlightMc ? "rgba(34,211,238,0.15)" : "transparent",
                     display: "flex", alignItems: "center", justifyContent: "center",
                     fontSize: isMobile ? 13 : 13,
-                    fontWeight: isToday ? 800 : 400,
-                    color: isToday ? "#09090b" : isSelected ? "var(--accent)" : "var(--text-primary)",
+                    fontWeight: isToday ? 800 : highlightMc ? 600 : 400,
+                    color: isToday
+                      ? "#09090b"
+                      : isSelected || highlightMc ? "var(--accent)" : "var(--text-primary)",
                     marginBottom: isMobile ? 5 : 4,
                     flexShrink: 0,
                   }}>{day}</div>
@@ -642,18 +687,18 @@ export default function CalendarPage() {
       {/* ── MOBILE bottom sheet ── */}
       <DaySheet />
 
-      {/* ── MATCHES LIST THIS MONTH ── */}
-      {matches.length > 0 && (
+      {/* ── MATCHES LIST (mes o microciclo activo) ── */}
+      {listMatches.length > 0 && (
         <div style={{ marginTop: isMobile ? 24 : 32 }}>
           <p className="label-caps" style={{ marginBottom: 14, paddingLeft: isMobile ? 4 : 0 }}>
-            Partidos este mes · {matches.length}
+            Partidos · {scopeLabel} · {listMatches.length}
           </p>
           <div style={{
             display: "grid",
             gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(260px, 1fr))",
             gap: isMobile ? 8 : 10,
           }}>
-            {matches.map(m => {
+            {listMatches.map(m => {
               const team = teamMap[m.teamId];
               const teamColor = team?.color || DEFAULT_TEAM_COLOR;
               const homeColor = m.homeAway === "home" ? "#22c55e" : "#3b82f6";
@@ -699,18 +744,18 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* ── SESSIONS LIST THIS MONTH ── */}
-      {sessions.length > 0 && (
+      {/* ── SESSIONS LIST (mes o microciclo activo) ── */}
+      {listSessions.length > 0 && (
         <div style={{ marginTop: isMobile ? 24 : 32 }}>
           <p className="label-caps" style={{ marginBottom: 14, paddingLeft: isMobile ? 4 : 0 }}>
-            Este mes · {sessions.length} sesión{sessions.length !== 1 ? "es" : ""}
+            {scopeLabel} · {listSessions.length} sesión{listSessions.length !== 1 ? "es" : ""}
           </p>
           <div style={{
             display: "grid",
             gridTemplateColumns: isMobile ? "1fr" : "repeat(auto-fill, minmax(260px, 1fr))",
             gap: isMobile ? 8 : 10,
           }}>
-            {sessions.map(s => {
+            {listSessions.map(s => {
               const team      = teamMap[s.teamId];
               const teamColor = team?.color || DEFAULT_TEAM_COLOR;
               const typeMeta  = sessionStyle(s.sessionType);

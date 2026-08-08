@@ -233,3 +233,30 @@ Ficheros:
 Verificado: `bunx tsc -b --force` OK, `bun run build` OK, `bunx vitest run` 26/26,
 `scripts/verify_microcycles.py` (NUEVO) en Chrome a 1440 y 375 → 16/16 checks OK, sin errores de
 consola nuevos (solo los 401 esperados de /api/auth/me pre-login). Datos de prueba limpiados.
+
+## 2026-08-08 — Fix: error de conexión en el login (ECONNRESET contra Turso)
+
+**Síntoma:** `POST /api/auth/login` devolvía HTTP 500 "Internal Server Error" tanto en el
+preview del sandbox como en la URL publicada.
+
+**Causa raíz:** Turso (libSQL sobre HTTP) cierra las conexiones inactivas. Con el proceso
+levantado varios días, la primera consulta tras el corte fallaba con
+`ECONNRESET / "The socket connection was closed unexpectedly"` (path `/v2/pipeline`),
+envuelto en un `DrizzleQueryError` sobre el `select ... from users where username = ?`.
+No era un fallo de credenciales ni de esquema.
+
+**Solución:**
+- `packages/web/src/api/database/retry.ts` (NUEVO): `isRetryableDbError` (recorre `cause`/`errors`,
+  lista de códigos de red + mensajes transitorios + lista negra de errores SQL/auth que NO se
+  reintentan), `backoffDelay` (exponencial + jitter), `withDbRetry` (4 intentos, base 100ms) y
+  `withRetryingClient` (Proxy sobre el cliente libSQL: envuelve `execute`, `batch`,
+  `executeMultiple`, `migrate`, `sync`; deja pasar `transaction` porque reintentar una
+  transacción interactiva no es seguro).
+- `packages/web/src/api/database/index.ts`: crea el cliente libSQL envuelto en
+  `withRetryingClient` y exporta `db`. Así TODAS las rutas heredan el retry sin tocar ninguna.
+  `./__client.ts` (template) se queda intacto y sin usar.
+- `packages/web/src/api/__tests__/db-retry.test.ts` (NUEVO): 15 tests.
+
+**Verificado:** `bunx vitest run` → 41/41 pass (5 files). `bunx tsc -b --force` → 0.
+`bun run build` → ok. Tras reiniciar `web-app`: `/api/health` → ok, login con credenciales
+falsas → 401 `{"error":"Credenciales incorrectas"}` (antes 500), `/` → 200, log de errores limpio.

@@ -7,8 +7,8 @@ interface McSelectorProps {
   onChange: (mc: number) => void;
   /** Número total de microciclos disponibles. */
   totalMc: number;
-  /** Etiquetas a mostrar (labels[i] = número real del MC i+1). Por defecto 1..N. */
-  labels?: number[];
+  /** Etiquetas ya formateadas (labels[i] = texto del microciclo i+1), p. ej. "MC 4" o "1–7 ago". */
+  labels?: string[];
   /** MC actual (1..totalMc), se marca con un punto para acceso rápido. */
   currentMc?: number;
   /** Mostrar botón "Todos". Default: true */
@@ -100,7 +100,7 @@ export default function McSelector({
                 whiteSpace: "nowrap",
               }}
             >
-              MC {labels?.[mc - 1] ?? mc}
+              {labels?.[mc - 1] ?? `MC ${mc}`}
               {mc === currentMc && (
                 <span
                   aria-hidden

@@ -8,7 +8,7 @@ import Topbar, { ViewToggle } from "../components/Topbar";
 import { sessionStyle, hexToRgba, MATCH_COLOR } from "../lib/sessionTypes";
 import { Icon, PATHS } from "../components/icons";
 import McSelector from "../components/McSelector";
-import { monthMicrocycles, findMicrocycleIndex } from "../lib/microcycles";
+import { monthMicrocycles, findMicrocycleIndex, weekLabel } from "../lib/microcycles";
 
 const DAYS_DESKTOP = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const DAYS_MOBILE  = ["L",   "M",   "X",   "J",   "V",   "S",   "D"];
@@ -123,13 +123,13 @@ export default function CalendarPage() {
   const inActiveMcDate = (d: string) => activeMc === 0 || activeMcDates.has(d);
   const listSessions = sessions.filter(s => inActiveMcDate(s.date));
   const listMatches  = matches.filter(m => inActiveMcDate(m.date));
-  const scopeLabel = activeMc > 0 ? `MC ${activeMcWeek?.label}` : "Este mes";
+  const scopeLabel = activeMc > 0 && activeMcWeek ? weekLabel(activeMcWeek) : "Este mes";
   const mcSelector = (
     <McSelector
       activeMc={activeMc}
       onChange={setActiveMc}
       totalMc={mcWeeks.length}
-      labels={mcWeeks.map(w => w.label)}
+      labels={mcWeeks.map(weekLabel)}
       currentMc={currentMcIdx >= 0 ? currentMcIdx + 1 : undefined}
       compact
     />

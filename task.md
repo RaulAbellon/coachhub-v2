@@ -260,3 +260,51 @@ No era un fallo de credenciales ni de esquema.
 **Verificado:** `bunx vitest run` → 41/41 pass (5 files). `bunx tsc -b --force` → 0.
 `bun run build` → ok. Tras reiniciar `web-app`: `/api/health` → ok, login con credenciales
 falsas → 401 `{"error":"Credenciales incorrectas"}` (antes 500), `/` → 200, log de errores limpio.
+
+## 2026-08-08 — Microciclos continuos entre meses (cambio de regla)
+
+**Antes:** el número de MC se calculaba como semanas transcurridas desde la primera sesión
+del equipo (`diffWeeks + 1`), así que una semana de parón consumía número. Y en el frontend,
+las semanas sin sesiones se numeraban por posición dentro del mes (1..N) o se extrapolaban,
+lo que daba la sensación de reinicio mensual.
+
+**Regla acordada con el usuario:**
+- **Continua:** no se reinicia entre meses ni entre temporadas.
+- **Por equipo:** MC 1 = semana de la primera sesión de ESE equipo. El mismo día puede ser
+  MC 5 para un equipo y MC 2 para otro.
+- **Densa:** solo se numeran las semanas ISO CON sesiones. Una semana sin sesiones no consume
+  número (si no se entrena, la cuenta no salta).
+- **Renumeración:** añadir una sesión con fecha anterior a la primera desplaza toda la cuenta
+  (esa semana pasa a MC 1 y el resto sube).
+
+**Backend** (`packages/web/src/api/routes/sessions.ts`):
+- `calcMicrocycle` (semanas transcurridas) → eliminado.
+- `mondayOf(date)` y `microcycleByMonday(dates)` (exportadas, testeadas): rank denso de los
+  lunes con sesiones.
+- `recalcTeamMicrocycles(teamId)`: renumera todas las sesiones del equipo y solo escribe las
+  filas que cambian. Se llama tras POST, PUT (equipo destino + equipo origen si la sesión se
+  mueve) y DELETE. El POST/PUT devuelven la sesión releída para que el front reciba el MC final.
+
+**Frontend** (`packages/web/src/web/lib/microcycles.ts`):
+- Ya NO inventa números ni extrapola: `MicrocycleWeek` pasa de `label: number` a
+  `mcNumbers: number[]` + `label: string | null` ("MC 4", "MC 3 · 7" cuando dos equipos
+  coinciden en semana con distinta cuenta, `null` si la semana no tiene sesiones).
+- Nuevos `weekRangeLabel(monday)` ("27 jul–2 ago") y `weekLabel(week)` (MC si lo tiene, rango
+  si no). `McSelector.labels` pasa de `number[]` a `string[]`.
+- `CalendarPage` (pills + `scopeLabel`) y `MicrocycleWidget` (cabecera + pills) usan `weekLabel`.
+
+**Extras:** `scripts/recalc-microcycles.mjs` (renumera la BD completa con la regla nueva,
+`--dry` para simular) y `scripts/verify_microcycles.py` ampliado con sesiones del mes anterior
+y del siguiente + checks de continuidad entre meses.
+
+**Verificado:**
+- `bunx vitest run` → **56/56 pass** (6 files; 11 tests nuevos de numeración backend,
+  microcycles.test.ts reescrito).
+- `bunx tsc -b --force` → 0. `bun run build` → ok.
+- E2E por API: altas en ago/sep/oct → MC 1,1,2,3,4,5 (la semana de parón no salta); alta con
+  fecha anterior → renumera a 1..6; borrar la única sesión de una semana → renumera a 1..5.
+- `python3 scripts/verify_microcycles.py` (Chrome 1440 y 375) → **26/26 OK**, `checks fallidos: 0`.
+  MC mes actual `[4,5,6]` → mes siguiente `[7]`, sin reinicio en MC 1; semanas vacías con rango
+  de fechas. Únicos errores de consola: los 401 esperados de `/api/auth/me` pre-login.
+- `node scripts/recalc-microcycles.mjs` → 0 cambios (la API y el script coinciden).
+- `node scripts/cleanup_test.mjs` → `quedan: { u: 4, t: 4, s: 0, p: 0, m: 0 }`.

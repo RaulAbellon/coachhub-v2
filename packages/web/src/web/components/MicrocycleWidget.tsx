@@ -7,7 +7,7 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import McSelector from "./McSelector";
 import { SectionLabel, LinkAction } from "./Panel";
 import { hexToRgba, sessionStyle, MATCH_COLOR } from "../lib/sessionTypes";
-import { monthMicrocycles, findMicrocycleIndex, toISODate } from "../lib/microcycles";
+import { monthMicrocycles, findMicrocycleIndex, toISODate, weekLabel } from "../lib/microcycles";
 
 interface Session {
   id: number;
@@ -178,7 +178,7 @@ export default function MicrocycleWidget() {
       activeMc={mcIndex + 1}
       onChange={handleMcChange}
       totalMc={weeks.length}
-      labels={weeks.map((w) => w.label)}
+      labels={weeks.map(weekLabel)}
       currentMc={currentIdx + 1}
       showAll={false}
       compact={isMobile}
@@ -222,7 +222,7 @@ export default function MicrocycleWidget() {
             <div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 4 }}>
                 <span style={{ fontSize: isMobile ? 18 : 20, fontWeight: 800, color: "var(--accent)" }}>
-                  MC {activeWeek.label}
+                  {weekLabel(activeWeek)}
                 </span>
                 {mcIndex === currentIdx && (
                   <span

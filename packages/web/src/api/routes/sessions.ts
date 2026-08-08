@@ -6,37 +6,65 @@ import { requireAuth } from "../lib/auth";
 import { assertBase64FieldsWithinLimit, PayloadTooLargeError } from "../lib/validation";
 
 
-// Calculate microcycle for a given date within a team.
-// Microcycle 1 = week of the team's first ever session.
-// Each subsequent Monday starts a new microcycle.
-async function calcMicrocycle(teamId: number, date: string): Promise<number> {
-  // Get first session date of this team
-  const first = await db.select({ date: schema.sessions.date })
+/**
+ * Numeración de microciclos de un equipo.
+ *
+ * Un microciclo es una semana ISO (lunes → domingo) que TIENE al menos una
+ * sesión. La numeración es continua y no se reinicia nunca (ni por mes ni por
+ * temporada): MC 1 = semana de la primera sesión del equipo, y cada semana
+ * siguiente CON sesiones es el MC siguiente. Las semanas sin sesiones no
+ * consumen número (si no se entrena una semana, la cuenta no salta).
+ *
+ * Es por equipo: el mismo día puede ser MC 5 para un equipo y MC 2 para otro.
+ * Como añadir una sesión con fecha anterior a la primera existente desplaza
+ * toda la cuenta, se renumera el equipo completo tras cada alta, edición o
+ * borrado (`recalcTeamMicrocycles`).
+ */
+
+/** Lunes (YYYY-MM-DD) de la semana ISO de `date`. */
+export function mondayOf(date: string): string {
+  const d = new Date(date + "T12:00:00");
+  const day = d.getDay(); // 0 = domingo
+  d.setDate(d.getDate() + (day === 0 ? -6 : 1 - day));
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
+}
+
+/**
+ * Asigna a cada fecha el número de microciclo que le corresponde: las semanas
+ * con sesiones se ordenan cronológicamente y se numeran 1, 2, 3… sin huecos.
+ */
+export function microcycleByMonday(dates: string[]): Map<string, number> {
+  const mondays = [...new Set(dates.map(mondayOf))].sort();
+  return new Map(mondays.map((monday, idx) => [monday, idx + 1]));
+}
+
+/**
+ * Renumera los microciclos de todas las sesiones de un equipo y devuelve el
+ * número resultante para `forDate` (si se indica). Solo escribe las filas cuyo
+ * número cambia.
+ */
+async function recalcTeamMicrocycles(teamId: number, forDate?: string): Promise<number> {
+  const rows = await db
+    .select({ id: schema.sessions.id, date: schema.sessions.date, microcycle: schema.sessions.microcycle })
     .from(schema.sessions)
     .where(eq(schema.sessions.teamId, teamId))
     .orderBy(asc(schema.sessions.date))
-    .limit(1)
-    .get();
+    .all();
 
-  const firstDate = first ? new Date(first.date + "T12:00:00") : new Date(date + "T12:00:00");
-  const sessionDate = new Date(date + "T12:00:00");
+  const byMonday = microcycleByMonday(rows.map((r) => r.date));
 
-  // Find Monday of each week
-  const getMondayOf = (d: Date) => {
-    const day = d.getDay(); // 0=Sun, 1=Mon...
-    const diff = (day === 0 ? -6 : 1 - day);
-    const monday = new Date(d);
-    monday.setDate(d.getDate() + diff);
-    monday.setHours(0, 0, 0, 0);
-    return monday;
-  };
+  for (const row of rows) {
+    const mc = byMonday.get(mondayOf(row.date)) ?? 1;
+    if (row.microcycle !== mc) {
+      await db.update(schema.sessions).set({ microcycle: mc }).where(eq(schema.sessions.id, row.id));
+    }
+  }
 
-  const firstMonday = getMondayOf(firstDate);
-  const sessionMonday = getMondayOf(sessionDate);
-
-  const diffMs = sessionMonday.getTime() - firstMonday.getTime();
-  const diffWeeks = Math.floor(diffMs / (7 * 24 * 60 * 60 * 1000));
-  return Math.max(1, diffWeeks + 1);
+  if (!forDate) return 1;
+  return byMonday.get(mondayOf(forDate)) ?? 1;
 }
 
 export const sessions = new Hono()
@@ -169,10 +197,7 @@ export const sessions = new Hono()
       .get();
     if (!member || member.role === "viewer") return c.json({ error: "Acceso denegado" }, 403);
 
-    // Auto-calculate microcycle
-    const microcycle = await calcMicrocycle(Number(body.teamId), body.date);
-
-    const [session] = await db.insert(schema.sessions).values({
+    const [inserted] = await db.insert(schema.sessions).values({
       teamId: body.teamId,
       title: body.title,
       date: body.date,
@@ -184,10 +209,16 @@ export const sessions = new Hono()
       physicalPdfData: body.physicalPdfData ?? "",
       physicalPdfName: body.physicalPdfName ?? "",
       sessionType: body.sessionType ?? "ataque",
-      microcycle,
+      microcycle: 1,
     }).returning();
 
-    return c.json({ session }, 201);
+    // La nueva sesión puede desplazar la numeración del resto (p. ej. si su
+    // fecha es anterior a la primera existente), así que se renumera el equipo.
+    await recalcTeamMicrocycles(Number(body.teamId));
+    const session = await db.select().from(schema.sessions)
+      .where(eq(schema.sessions.id, inserted.id)).get();
+
+    return c.json({ session: session ?? inserted }, 201);
   })
 
   // PUT /api/sessions/:id
@@ -216,10 +247,7 @@ export const sessions = new Hono()
       throw e;
     }
 
-    // Recalculate microcycle if date or teamId changed
     const targetTeam = body.teamId ?? session.teamId;
-    const targetDate = body.date ?? session.date;
-    const microcycle = targetTeam ? await calcMicrocycle(Number(targetTeam), targetDate) : 1;
 
     const updateData: any = {
       title: body.title,
@@ -229,7 +257,6 @@ export const sessions = new Hono()
       duration: body.duration,
       teamId: body.teamId,
       sessionType: body.sessionType,
-      microcycle,
       updatedAt: new Date(),
     };
     if (body.pdfData !== undefined) updateData.pdfData = body.pdfData;
@@ -242,7 +269,15 @@ export const sessions = new Hono()
       .where(eq(schema.sessions.id, id))
       .returning();
 
-    return c.json({ session: updated }, 200);
+    // Cambiar la fecha (o el equipo) reordena los microciclos: se renumeran el
+    // equipo destino y, si la sesión se ha movido, también el de origen.
+    if (targetTeam) await recalcTeamMicrocycles(Number(targetTeam));
+    if (session.teamId && session.teamId !== Number(targetTeam)) {
+      await recalcTeamMicrocycles(session.teamId);
+    }
+    const fresh = await db.select().from(schema.sessions).where(eq(schema.sessions.id, id)).get();
+
+    return c.json({ session: fresh ?? updated }, 200);
   })
 
   // DELETE /api/sessions/:id
@@ -268,5 +303,8 @@ export const sessions = new Hono()
     await db.delete(schema.annotations).where(eq(schema.annotations.sessionId, id));
     await db.delete(schema.attendance).where(eq(schema.attendance.sessionId, id));
     await db.delete(schema.sessions).where(eq(schema.sessions.id, id));
+    // Borrar una sesión puede dejar una semana vacía: esa semana deja de
+    // consumir número y el resto del equipo se renumera.
+    if (session.teamId) await recalcTeamMicrocycles(session.teamId);
     return c.json({ ok: true }, 200);
   });

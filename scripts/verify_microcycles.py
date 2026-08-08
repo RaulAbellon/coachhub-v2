@@ -39,7 +39,10 @@ for name, cat, color in [("Sénior Femenino", "Senior", "#22d3ee"),
 TYPES = ["ataque", "defensa", "transicion", "preparacion"]
 # Sesiones repartidas por varias semanas del mes para que haya varios MC con datos.
 for i, t in enumerate(teams):
-    for d in (-14, -8, -2, 0, 1, 3, 9):
+    # Incluye el mes anterior y el siguiente para comprobar que la numeración de
+    # microciclos es CONTINUA entre meses (no se reinicia) y que las semanas sin
+    # sesiones no consumen número.
+    for d in (-45, -14, -8, -2, 0, 1, 3, 9, 40):
         api("/api/sessions", {
             "teamId": t["id"],
             "title": f"Sesión {TYPES[d % 4]} {t['name'].split()[0]}",
@@ -128,6 +131,37 @@ with sync_playwright() as pw:
                 "() => Array.from(document.querySelectorAll('div')).filter(e => e.style.opacity === '0.25').length"
             )
             check(dimmed_after == 0, f"{label}: 'Todos' restaura el mes completo")
+
+        # ── CONTINUIDAD ENTRE MESES ──
+        def mc_numbers():
+            txts = page.locator("button", has_text="MC ").all_inner_texts()
+            out = []
+            for t in txts:
+                for part in t.replace("MC", "").split("·"):
+                    part = part.strip()
+                    if part.isdigit():
+                        out.append(int(part))
+            return sorted(set(out))
+
+        page.goto(BASE + "/calendar")
+        page.wait_for_timeout(2500)
+        this_month = mc_numbers()
+        # Semanas sin sesiones: pills con rango de fechas en vez de "MC n"
+        range_pills = page.evaluate(
+            "() => Array.from(document.querySelectorAll('button')).filter(e => /^\\d+( \\w+)?–\\d+ \\w+$/.test(e.innerText.trim())).length"
+        )
+        check(range_pills > 0, f"{label}: las semanas sin sesiones se muestran sin MC, con su rango de fechas ({range_pills})")
+
+        page.get_by_role("button", name="Mes siguiente").first.click()
+        page.wait_for_timeout(2200)
+        next_month = mc_numbers()
+        print(f"[{label}] MC mes actual={this_month} mes siguiente={next_month}")
+        check(bool(this_month) and bool(next_month), f"{label}: hay MC numerados en los dos meses")
+        if this_month and next_month:
+            check(1 not in next_month, f"{label}: el mes siguiente NO reinicia en MC 1")
+            check(max(next_month) > max(this_month),
+                  f"{label}: la numeración sigue subiendo al cambiar de mes ({max(this_month)} → {max(next_month)})")
+        page.screenshot(path=f"{OUT}/{label}-calendar-next-month.png", full_page=True)
 
         page.close()
 

@@ -308,3 +308,45 @@ y del siguiente + checks de continuidad entre meses.
   de fechas. Únicos errores de consola: los 401 esperados de `/api/auth/me` pre-login.
 - `node scripts/recalc-microcycles.mjs` → 0 cambios (la API y el script coinciden).
 - `node scripts/cleanup_test.mjs` → `quedan: { u: 4, t: 4, s: 0, p: 0, m: 0 }`.
+
+---
+
+## Fix: en móvil no aparecían "+ Añadir sesión / + Añadir partido" al pulsar un día
+
+**Síntoma (reportado por el usuario):** en el móvil real, al pulsar un día del calendario no
+salían los botones de añadir sesión/partido. En el navegador de escritorio con ventana estrecha
+sí funcionaba, así que no se reproducía con un simple resize.
+
+**Causa raíz:** `useIsMobile` decidía el modo con `window.innerWidth`. En Chrome/Safari de móvil,
+si algo del layout desborda a lo ancho, el navegador ensancha el *viewport de layout* y
+`innerWidth` devuelve el ancho del CONTENIDO, no el de la pantalla. Reproducido con Playwright
+usando `is_mobile=True, has_touch=True` (imprescindible; con solo `viewport=390` NO se reproduce):
+`innerWidth: 1137` con `clientWidth: 390`. Resultado: primer render en modo escritorio → el layout
+de escritorio desborda → `innerWidth` grande → se quedaba en escritorio para siempre, y el bottom
+sheet móvil del calendario (donde viven esos botones) nunca se montaba
+(`if (!selectedDay || !isMobile) return null` en `DaySheet`).
+
+Descartados como causa: permisos (`canEdit`, el usuario de prueba es `owner`), el meta viewport
+(está correcto en `index.html`) y el marcado del sheet (los botones existen en el DOM).
+
+**Fix** (`packages/web/src/web/hooks/useIsMobile.ts`, reescrito):
+- Detección con `window.matchMedia("(max-width: 767.98px)")`, que sí va contra el viewport real,
+  y suscripción al evento `change` del media query list en vez de al `resize`.
+- Fallback a `document.documentElement.clientWidth` (y solo en último caso a `innerWidth`) para
+  entornos sin `matchMedia`.
+- `useState` inicializado de forma lazy con el valor real → sin primer render en escritorio ni
+  parpadeo.
+- Exporta `mobileMediaQuery(breakpoint)` y `readIsMobile(breakpoint, win?)` (con `window`
+  inyectable) para poder testear la lógica pura en el entorno node de vitest.
+
+**Verificado:**
+- `bunx vitest run` → **63/63 pass** (7 files; 7 tests nuevos en
+  `src/web/hooks/__tests__/useIsMobile.test.ts`, incluido el caso clave
+  `innerWidth 1137` + `clientWidth 390` → `true`).
+- `bunx tsc -b --force` → 0. `bun run build` → ok. `pm2 restart web-app` + `/api/health` → ok.
+- Reproducción con `/tmp/mob2.py` tras el fix: `390-ismobile` pasa de
+  `{inner: 1137, scrollW: 1137}, bottomSheets: 0` a `{inner: 390, scrollW: 390}, bottomSheets: 2`,
+  con `+ Añadir sesión` visible en `y: 736`. Igual en `390-plain` y `375-plain`.
+- Repaso del resto de consumidores de `useIsMobile` (`/`, `/calendar`, `/teams`, `/players` con
+  `is_mobile=True`): bottom nav presente, sidebar oculto, sin scroll horizontal
+  (`scrollW == clientWidth == 390`), 0 errores de consola.

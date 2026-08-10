@@ -280,3 +280,60 @@ export const playerCustomValues = sqliteTable("player_custom_values", {
 }, (t) => ({
   playerFieldUnique: uniqueIndex("player_custom_values_player_field_unique").on(t.playerId, t.fieldId),
 }));
+
+// ─── EVALUATION TESTS (pruebas físicas configurables por equipo) ─────────────
+export const evaluationTests = sqliteTable("evaluation_tests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  teamId: integer("team_id").notNull().references(() => teams.id),
+  name: text("name").notNull(),                        // "Velocidad 20m"
+  unit: text("unit").notNull().default(""),            // "seg", "cm", "m", "kg"
+  description: text("description").notNull().default(""),
+  category: text("category").notNull().default("otro"), // velocidad | fuerza | resistencia | agilidad | flexibilidad | otro
+  // Dirección de mejora: si es true, un valor MENOR es mejor (tiempos);
+  // si es false, un valor MAYOR es mejor (saltos, cargas). Configurable por
+  // prueba en vez de deducirlo de la categoría.
+  lowerIsBetter: integer("lower_is_better", { mode: "boolean" }).notNull().default(false),
+  sortOrder: integer("sort_order").notNull().default(0),
+  deletedAt: integer("deleted_at", { mode: "timestamp" }), // soft-delete: conserva el histórico
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+}, (t) => ({
+  teamIdx: index("evaluation_tests_team_idx").on(t.teamId),
+}));
+
+// ─── EVALUATION SESSIONS (cada jornada de evaluación por equipo) ─────────────
+export const evaluationSessions = sqliteTable("evaluation_sessions", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  teamId: integer("team_id").notNull().references(() => teams.id),
+  date: text("date").notNull(),               // YYYY-MM-DD
+  notes: text("notes").notNull().default(""),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+}, (t) => ({
+  teamIdx: index("evaluation_sessions_team_idx").on(t.teamId),
+}));
+
+// ─── EVALUATION VALUES (valor de un jugador en una prueba, en una sesión) ────
+export const evaluationValues = sqliteTable("evaluation_values", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: integer("session_id").notNull().references(() => evaluationSessions.id),
+  playerId: integer("player_id").notNull().references(() => players.id),
+  testId: integer("test_id").notNull().references(() => evaluationTests.id),
+  value: text("value").notNull().default(""), // valor numérico guardado como texto
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+  updatedAt: integer("updated_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+}, (t) => ({
+  sessionPlayerTestUnique: uniqueIndex("eval_values_session_player_test_unique").on(
+    t.sessionId, t.playerId, t.testId,
+  ),
+  playerIdx: index("evaluation_values_player_idx").on(t.playerId),
+}));

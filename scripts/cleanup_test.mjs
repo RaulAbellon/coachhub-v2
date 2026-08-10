@@ -10,7 +10,9 @@ const env = Object.fromEntries(
 
 const db = createClient({ url: env.DATABASE_URL, authToken: env.DATABASE_AUTH_TOKEN });
 
-const users = await db.execute("SELECT id, username FROM users WHERE username GLOB 't[0-9]*'");
+const users = await db.execute(
+  "SELECT id, username FROM users WHERE username GLOB 't[0-9]*' OR username GLOB 'ev[0-9]*' OR username GLOB 'vw[0-9]*'",
+);
 console.log("usuarios de prueba:", users.rows.map(r => r.username));
 if (users.rows.length === 0) process.exit(0);
 const uids = users.rows.map(r => Number(r.id));
@@ -51,6 +53,15 @@ if (tids.length) {
     console.log("callups(m)", await q(`DELETE FROM match_callups WHERE match_id IN (${s})`, mids));
     console.log("matchdocs", await q(`DELETE FROM match_documents WHERE match_id IN (${s})`, mids));
   }
+  // Valoraciones físicas
+  const evs = await db.execute({ sql: `SELECT id FROM evaluation_sessions WHERE team_id IN (${ph})`, args: tids });
+  const evids = evs.rows.map(r => Number(r.id));
+  if (evids.length) {
+    const s = evids.map(() => "?").join(",");
+    console.log("evalvalues", await q(`DELETE FROM evaluation_values WHERE session_id IN (${s})`, evids));
+  }
+  console.log("evalsessions", await q(`DELETE FROM evaluation_sessions WHERE team_id IN (${ph})`, tids));
+  console.log("evaltests", await q(`DELETE FROM evaluation_tests WHERE team_id IN (${ph})`, tids));
   console.log("matches", await q(`DELETE FROM matches WHERE team_id IN (${ph})`, tids));
   console.log("players", await q(`DELETE FROM players WHERE team_id IN (${ph})`, tids));
   console.log("sessions", await q(`DELETE FROM sessions WHERE team_id IN (${ph})`, tids));

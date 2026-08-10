@@ -2,7 +2,7 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
 import { authFetch } from "../lib/authFetch";
-import Topbar, { ViewToggle } from "../components/Topbar";
+import Topbar from "../components/Topbar";
 import StatsStrip, { StatCard } from "../components/StatsStrip";
 import TeamCardCompact, { AddTeamCard, type TeamCardData } from "../components/TeamCardCompact";
 import UpcomingEvents, { type UpcomingEvent } from "../components/UpcomingEvents";
@@ -46,14 +46,6 @@ export default function DashboardPage() {
         crumbs={[{ label: "Dashboard" }]}
         actions={
           <>
-            {!isMobile && <ViewToggle
-              value="dashboard"
-              options={[
-                { value: "dashboard", label: "Dashboard" },
-                { value: "calendar", label: "Calendario" },
-              ]}
-              onChange={(v) => v === "calendar" && navigate("/calendar")}
-            />}
             {canEdit && !isMobile && (
               <button className="btn-accent" onClick={() => navigate("/sessions/new")}>
                 <Icon d={PATHS.plus} size={14} color="#000" strokeWidth={2.2} /> Sesión

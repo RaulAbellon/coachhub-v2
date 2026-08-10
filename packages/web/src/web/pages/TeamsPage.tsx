@@ -544,6 +544,10 @@ export default function TeamsPage() {
                   style={{ flex: "1 1 auto", minWidth: 110, fontSize: 13, padding: "8px 12px", justifyContent: "center" }}>
                   {playerWord(team.gender, true, true)}
                 </button>
+                <button className="btn-ghost" onClick={() => navigate(`/teams/${team.id}/evaluations`)}
+                  style={{ flex: "1 1 auto", minWidth: 110, fontSize: 13, padding: "8px 12px", justifyContent: "center" }}>
+                  Valoraciones
+                </button>
                 {team.role === "owner" && (
                   <button className="btn-ghost" onClick={() => setMembersTeamId(team.id)}
                     style={{ flex: "1 1 auto", minWidth: 110, fontSize: 13, padding: "8px 12px", justifyContent: "center" }}>

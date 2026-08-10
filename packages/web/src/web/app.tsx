@@ -14,6 +14,7 @@ import TeamMatchesPage from "./pages/TeamMatchesPage";
 import NewMatchPage from "./pages/NewMatchPage";
 import MatchPage from "./pages/MatchPage";
 import PlayersPage from "./pages/PlayersPage";
+import EvaluationsPage from "./pages/EvaluationsPage";
 import ProfilePage from "./pages/ProfilePage";
 import LoginPage from "./pages/LoginPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
@@ -89,6 +90,9 @@ function AppLayout() {
           </Route>
           <Route path="/teams/:teamId/matches">
             {() => <TeamMatchesPage />}
+          </Route>
+          <Route path="/teams/:teamId/evaluations">
+            {(params) => <EvaluationsPage params={params} />}
           </Route>
           <Route path="/matches/new" component={NewMatchPage} />
           <Route path="/matches/:id">

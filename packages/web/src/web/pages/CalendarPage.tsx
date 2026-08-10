@@ -4,7 +4,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
 import { authFetch } from "../lib/authFetch";
 import { useIsMobile } from "../hooks/useIsMobile";
-import Topbar, { ViewToggle } from "../components/Topbar";
+import Topbar from "../components/Topbar";
 import { sessionStyle, hexToRgba, MATCH_COLOR } from "../lib/sessionTypes";
 import { Icon, PATHS } from "../components/icons";
 import McSelector from "../components/McSelector";
@@ -329,15 +329,6 @@ export default function CalendarPage() {
               {monthNav}
               <div style={{ width: 1, height: 24, background: "var(--border)", margin: "0 4px" }} />
               {mcSelector}
-              <div style={{ width: 1, height: 24, background: "var(--border)", margin: "0 4px" }} />
-              <ViewToggle
-                value="calendar"
-                options={[
-                  { value: "dashboard", label: "Dashboard" },
-                  { value: "calendar", label: "Calendario" },
-                ]}
-                onChange={(v) => v === "dashboard" && navigate("/")}
-              />
               {canEdit && (
                 <button className="btn-accent" onClick={() => navigate("/sessions/new")}>
                   <Icon d={PATHS.plus} size={14} color="#000" strokeWidth={2.2} /> Sesión

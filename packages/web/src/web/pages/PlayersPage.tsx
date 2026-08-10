@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "wouter";
+import { useParams, useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
 import { useIsMobile } from "../hooks/useIsMobile";
 import Topbar from "../components/Topbar";
@@ -11,6 +11,10 @@ import { ADDITIONAL_COLOR, ADDITIONAL_DIM } from "../lib/additional";
 import { AdditionalBadge } from "../components/AdditionalBadge";
 import { formatFieldValue, type FormField } from "../lib/formFields";
 import { generatePlayerPdf, type PlayerSummary } from "../lib/playerPdf";
+import {
+  categoryOf, computeTrend, trendColor, formatDateES, parseValue,
+  type EvalValueEnriched,
+} from "../lib/evaluations";
 
 const POSITIONS = [
   "Portera",
@@ -97,7 +101,7 @@ function emptyInjuryForm() {
 }
 
 // ─── PANEL VIEWS ──────────────────────────────────────────────────────────────
-type PanelView = "ficha" | "lesiones";
+type PanelView = "ficha" | "lesiones" | "evaluaciones";
 
 export default function PlayersPage({ params }: { params?: { teamId?: string } }) {
   const routeParams = useParams<{ teamId: string }>();
@@ -105,6 +109,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
   const { token } = useAuth();
   const qc = useQueryClient();
   const isMobile = useIsMobile();
+  const [, navigate] = useLocation();
 
   const [showAddPlayer, setShowAddPlayer] = useState(false);
   const [editPlayer, setEditPlayer] = useState<Player | null>(null);
@@ -137,6 +142,14 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
     queryFn: async () => (await authFetch(`/api/injuries?playerId=${selectedPlayer!.id}`, {}, token)).json(),
     enabled: !!selectedPlayer,
   });
+
+  const { data: evalValuesData } = useQuery({
+    queryKey: ["eval-values-player", selectedPlayer?.id],
+    queryFn: async () =>
+      (await authFetch(`/api/evaluations/values?playerId=${selectedPlayer!.id}`, {}, token)).json(),
+    enabled: !!selectedPlayer,
+  });
+  const evalValues: EvalValueEnriched[] = evalValuesData?.values ?? [];
 
   // ─── Configuración de campos de la ficha (por equipo) ───────────────────────
   const formFields: FormField[] = playersData?.fields ?? [];
@@ -498,12 +511,12 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
 
               {/* Tabs */}
               <div style={{ display: "flex", gap: 4, marginTop: 14 }}>
-                {([["ficha", "Ficha"], ["lesiones", `Lesiones${activeInjuries > 0 ? ` (${activeInjuries})` : ""}`]] as const).map(([v, label]) => (
+                {([["ficha", "Ficha"], ["lesiones", `Lesiones${activeInjuries > 0 ? ` (${activeInjuries})` : ""}`], ["evaluaciones", "Evaluaciones"]] as const).map(([v, label]) => (
                   <button
                     key={v}
                     onClick={() => setPanelView(v)}
                     style={{
-                      flex: 1, padding: "6px 0", fontSize: 12, fontWeight: 600,
+                      flex: 1, padding: "6px 0", fontSize: 11.5, fontWeight: 600,
                       border: "none", borderRadius: 8, cursor: "pointer",
                       background: panelView === v ? "var(--accent)" : "var(--bg-secondary)",
                       color: panelView === v ? "#000" : "var(--text-secondary)",
@@ -524,7 +537,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
                   onDelete={() => deletePlayer.mutate(selectedLive.id)}
                   onExportPdf={() => setPdfPlayer(selectedLive)}
                 />
-              ) : (
+              ) : panelView === "lesiones" ? (
                 <LesionesTab
                   injuries={injuries}
                   onAdd={() => { setEditInjury(null); setInjuryForm(emptyInjuryForm()); setShowAddInjury(true); }}
@@ -532,6 +545,11 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
                   onResolve={(inj) => updateInjury.mutate({ id: inj.id, data: { resolved: !inj.resolved } })}
                   onDelete={(id) => deleteInjury.mutate(id)}
                   injuryDuration={injuryDuration}
+                />
+              ) : (
+                <EvaluacionesTab
+                  values={evalValues}
+                  onOpenModule={() => navigate(`/teams/${teamId}/evaluations`)}
                 />
               )}
             </div>
@@ -1218,6 +1236,130 @@ function InjuryCard({ inj, onEdit, onResolve, onDelete, duration }: {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+// ─── EVALUACIONES TAB ─────────────────────────────────────────────────────────
+function EvaluacionesTab({ values, onOpenModule }: {
+  values: EvalValueEnriched[];
+  onOpenModule: () => void;
+}) {
+  const [openTestId, setOpenTestId] = useState<number | null>(null);
+
+  // Agrupar por prueba, cada grupo ordenado de más antiguo a más reciente.
+  const groups = (() => {
+    const map = new Map<number, { test: NonNullable<EvalValueEnriched["test"]>; rows: EvalValueEnriched[] }>();
+    for (const v of values) {
+      if (!v.test || !v.session) continue;
+      const g = map.get(v.test.id) ?? { test: v.test, rows: [] };
+      g.rows.push(v);
+      map.set(v.test.id, g);
+    }
+    const list = [...map.values()];
+    for (const g of list) {
+      g.rows.sort((a, b) => (a.session?.date ?? "").localeCompare(b.session?.date ?? ""));
+    }
+    list.sort((a, b) => (a.test.sortOrder - b.test.sortOrder) || a.test.name.localeCompare(b.test.name));
+    return list;
+  })();
+
+  return (
+    <div>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <span className="label-caps">Valoraciones físicas</span>
+        <button className="btn-ghost" onClick={onOpenModule} style={{ padding: "3px 10px", fontSize: 11 }}>
+          Ir al módulo
+        </button>
+      </div>
+
+      {groups.length === 0 ? (
+        <div style={{ textAlign: "center", padding: "24px 0" }}>
+          <p style={{ fontSize: 22, marginBottom: 8 }}>📊</p>
+          <p style={{ fontSize: 13, color: "var(--text-muted)" }}>Sin valoraciones registradas</p>
+        </div>
+      ) : (
+        groups.map((g) => {
+          const cat = categoryOf(g.test.category);
+          const last = g.rows[g.rows.length - 1];
+          const prev = g.rows.length > 1 ? g.rows[g.rows.length - 2] : null;
+          const trend = computeTrend(last?.value, prev?.value, g.test.lowerIsBetter);
+          const open = openTestId === g.test.id;
+          const nums = g.rows.map((r) => parseValue(r.value)).filter((n): n is number => n !== null);
+          const min = nums.length ? Math.min(...nums) : 0;
+          const max = nums.length ? Math.max(...nums) : 0;
+          const span = max - min || 1;
+
+          return (
+            <div key={g.test.id} style={{
+              padding: "10px 12px", borderRadius: 8, marginBottom: 8,
+              background: "var(--bg-secondary)", border: "1px solid var(--border)",
+            }}>
+              <button
+                onClick={() => setOpenTestId(open ? null : g.test.id)}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  gap: 8, width: "100%", background: "none", border: "none",
+                  padding: 0, cursor: "pointer", textAlign: "left", color: "inherit",
+                }}
+              >
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text-primary)", marginBottom: 3 }}>
+                    {g.test.name}
+                  </div>
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+                    <span style={{
+                      fontSize: 9.5, fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.06em",
+                      color: cat.color, background: `${cat.color}1a`, border: `1px solid ${cat.color}44`,
+                      borderRadius: 5, padding: "1px 6px",
+                    }}>{cat.label}</span>
+                    <span style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                      {g.rows.length} {g.rows.length === 1 ? "registro" : "registros"}
+                    </span>
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text-primary)" }}>
+                    {last?.value}
+                    <span style={{ fontSize: 10, color: "var(--text-muted)", marginLeft: 3 }}>{g.test.unit}</span>
+                  </div>
+                  {trend && (
+                    <div style={{ fontSize: 11, fontWeight: 600, color: trendColor(trend) }}>
+                      {trend.arrow} {trend.label}
+                    </div>
+                  )}
+                </div>
+              </button>
+
+              {open && (
+                <div style={{ marginTop: 10, paddingTop: 10, borderTop: "1px solid var(--border)" }}>
+                  {nums.length > 1 && (
+                    <div style={{ display: "flex", alignItems: "flex-end", gap: 3, height: 44, marginBottom: 10 }}>
+                      {g.rows.map((r) => {
+                        const n = parseValue(r.value);
+                        const h = n === null ? 2 : 8 + ((n - min) / span) * 32;
+                        return (
+                          <div key={r.id} title={`${r.session?.date ?? ""}: ${r.value}`}
+                            style={{ flex: 1, height: h, background: cat.color, opacity: 0.75, borderRadius: 3 }} />
+                        );
+                      })}
+                    </div>
+                  )}
+                  {[...g.rows].reverse().map((r) => (
+                    <div key={r.id} style={{
+                      display: "flex", justifyContent: "space-between", gap: 8,
+                      fontSize: 11.5, padding: "4px 0", borderBottom: "1px solid var(--border)",
+                    }}>
+                      <span style={{ color: "var(--text-muted)" }}>{formatDateES(r.session?.date ?? "")}</span>
+                      <strong style={{ color: "var(--text-primary)" }}>{r.value} {g.test.unit}</strong>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }

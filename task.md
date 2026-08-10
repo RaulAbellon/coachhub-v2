@@ -350,3 +350,90 @@ Descartados como causa: permisos (`canEdit`, el usuario de prueba es `owner`), e
 - Repaso del resto de consumidores de `useIsMobile` (`/`, `/calendar`, `/teams`, `/players` con
   `is_mobile=True`): bottom nav presente, sidebar oculto, sin scroll horizontal
   (`scrollW == clientWidth == 390`), 0 errores de consola.
+
+---
+
+## Módulo: Valoraciones físicas (tests, jornadas, comparativa)
+
+Implementado siguiendo la guía `CoachHub_Valoraciones_Implementacion.md`, con las
+desviaciones acordadas con el usuario (ver "Decisiones").
+
+### Esquema (3 tablas nuevas en `packages/web/src/api/database/schema.ts`)
+- `evaluation_tests` — pruebas configurables por equipo: `name`, `unit`, `description`,
+  `category` (velocidad/fuerza/resistencia/agilidad/flexibilidad/otro), `lower_is_better`,
+  `sort_order`, `deleted_at` (soft-delete: al borrar una prueba se conservan los valores
+  históricos). Índice por `team_id`.
+- `evaluation_sessions` — jornadas de evaluación: `date`, `notes`. Índice por `team_id`.
+- `evaluation_values` — una celda = (jornada, jugador, prueba, valor). Índice único
+  `eval_values_session_player_test_unique` + índice por `player_id`.
+
+Aplicado con `bun run db:push` desde `packages/web` (NO `db:generate`/`db:migrate`: no hay
+historial de migraciones en el repo y `db:generate` genera un `0000_*.sql` con TODAS las
+tablas). Backup previo: `backups/coachhub-backup-2026-08-10.json`.
+
+### API (`packages/web/src/api/routes/evaluations.ts`, montado en `/api/evaluations`)
+- `GET/POST /tests`, `PUT/DELETE /tests/:id` (soft-delete, `recordCount` en el GET)
+- `GET/POST /sessions`, `PUT/DELETE /sessions/:id`
+- `GET /values?sessionId=` (tabla de registro) y `GET /values?playerId=` (historial de la
+  ficha; el `teamId` se deriva del jugador, no del query param → anti-IDOR)
+- `GET /history?teamId=` (todas las jornadas + valores: comparativa y export)
+- `PUT /values/batch` — guarda varias celdas de una jornada; valida que jugador y prueba
+  pertenezcan al equipo y **borra** la fila cuando el valor llega vacío
+- Escritura sólo para `owner`/`editor`; `viewer` recibe 403 en todo POST/PUT/DELETE
+  (verificado con `scripts/seed_eval_viewer.mjs`).
+
+### Frontend
+- `packages/web/src/web/pages/EvaluationsPage.tsx` — ruta `/teams/:teamId/evaluations`,
+  tres vistas: **Pruebas**, **Registrar** y **Comparativa**. Tabla en escritorio y tarjetas
+  por jugador en móvil. Badge Registrado/Pendiente por jugador.
+- `packages/web/src/web/lib/evaluations.ts` — lógica pura (testeable sin DOM):
+  `parseValue` (acepta coma decimal), `computeTrend`, `computeStats`, `rankPlayers`,
+  `buildEvaluationsCsv` (separador `;` + BOM para Excel en español), formateo de fechas.
+- `PlayersPage.tsx` — tercera pestaña **Evaluaciones** en la ficha del jugador: resumen por
+  prueba con último valor y tendencia, y detalle desplegable con mini-gráfico y timeline.
+- `TeamsPage.tsx` — botón "Valoraciones" en la tarjeta de equipo.
+
+### Decisiones (acordadas con el usuario, se apartan de la guía)
+1. `ViewToggle` (Dashboard/Calendario) eliminado del topbar de `DashboardPage` y
+   `CalendarPage` — ya está en la barra lateral. El componente sigue exportado en `Topbar.tsx`.
+2. Guardado con **debounce de 600 ms** + estado local e indicador "Guardando… / Guardado",
+   en vez de un PUT por pulsación.
+3. "Nueva evaluación" abre un **modal con fecha y notas**, no crea la jornada directamente.
+4. Cada prueba tiene su propio campo **`lowerIsBetter`** ("menor es mejor" / "mayor es
+   mejor"); no se deduce de la categoría.
+5. La tabla de registro incluye **todos** los jugadores, también los adicionales (con badge).
+6. Extras: **exportación a CSV/Excel** y **comparativa entre jugadores** de una misma prueba.
+   Export a PDF descartado.
+
+### Bugs encontrados y corregidos durante la verificación E2E
+- **Valores guardados en la jornada equivocada:** al crear una jornada nueva,
+  `setSelectedSessionId(nueva)` corría antes de que el refetch de `eval-sessions` la
+  incluyera, así que el efecto que valida la selección volvía a la jornada anterior y las
+  celdas se escribían allí. Fix: `await qc.invalidateQueries(["eval-sessions"])` antes de
+  seleccionar la nueva jornada.
+- **Pérdida de los últimos cambios al cambiar de jornada:** el debounce pendiente se
+  descartaba. Fix: `pendingSessionRef` guarda a qué jornada pertenecen los cambios, se
+  vuelcan antes de cambiar y el `sessionId` viaja explícito en el payload del batch.
+- **Barras de la comparativa al revés en pruebas de tiempo:** la longitud era proporcional
+  al número, así que la peor marca tenía la barra más larga. Fix: `barRatio` invierte la
+  escala cuando `lowerIsBetter`.
+
+### Verificado
+- `bunx vitest run` → **79/79 pass** (16 nuevos en `src/web/lib/__tests__/evaluations.test.ts`).
+- `bunx tsc -b --force` → 0 errores. `bun run build` → ok. `bun run lint` → 8 errores de
+  convenciones preexistentes, ninguno nuevo.
+- E2E con Playwright (Chrome), escritorio 1440x950 y móvil real `is_mobile=True, has_touch=True`:
+  crear 2 pruebas (una "menor es mejor"), 2 jornadas, rellenar 16 celdas, debounce
+  "Guardando…"→"Guardado", badges Registrado, comparativa con ranking y tendencias
+  (-0.08 en verde, +0.05 en rojo), descarga del CSV con las dos jornadas y la jugadora
+  adicional marcada, y pestaña Evaluaciones de la ficha con "2 registros" y flechas.
+  0 errores de página. Capturas en `/tmp/eval/`.
+- Rol `viewer`: sin botones de crear/editar/eliminar, inputs deshabilitados y 403 en los
+  7 endpoints de escritura.
+- Datos de prueba eliminados con `node scripts/cleanup_test.mjs` (ampliado para reconocer
+  los usuarios `ev*`/`vw*` y limpiar las tablas de valoraciones). Quedan 5 usuarios y 5
+  equipos reales.
+
+### Scripts añadidos
+- `scripts/seed_eval_test.mjs` — crea usuario + equipo + 4 jugadoras de prueba vía API.
+- `scripts/seed_eval_viewer.mjs` — crea un viewer unido al equipo y comprueba los 403.

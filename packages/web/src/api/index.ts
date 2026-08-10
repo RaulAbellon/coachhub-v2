@@ -47,7 +47,18 @@ const app = new Hono()
   .route("/annotations", annotationsRoutes)
   .route("/form-fields", formFields)
   .route("/dashboard", dashboard)
-  .route("/evaluations", evaluations);
+  .route("/evaluations", evaluations)
+  // Cualquier ruta /api/* desconocida devuelve JSON, no el HTML por defecto de
+  // Hono: el frontend siempre hace res.json() y con HTML petaba al parsear.
+  .notFound((c) => c.json({ error: "Endpoint no encontrado" }, 404))
+  // Red de seguridad global: una excepción no capturada en cualquier ruta
+  // (timeout de BD, bug de programación) devolvía un 500 con cuerpo HTML que
+  // podía filtrar el stack trace. Ahora se registra en servidor y el cliente
+  // recibe siempre un JSON genérico. Ver BE-002.
+  .onError((err, c) => {
+    console.error("[api] error no capturado:", err);
+    return c.json({ error: "Error interno del servidor" }, 500);
+  });
 
 export type AppType = typeof app;
 export default app;

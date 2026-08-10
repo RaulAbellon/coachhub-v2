@@ -6,7 +6,7 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import Topbar from "../components/Topbar";
 import { Icon, PATHS } from "../components/icons";
 import { playerWord } from "../lib/gender";
-import { authFetch } from "../lib/authFetch";
+import { authFetch, authFetchJson } from "../lib/authFetch";
 import { ADDITIONAL_COLOR, ADDITIONAL_DIM } from "../lib/additional";
 import { AdditionalBadge } from "../components/AdditionalBadge";
 import { formatFieldValue, type FormField } from "../lib/formFields";
@@ -42,8 +42,26 @@ type Player = {
   previousInjuries: string | null;
   allergies: string | null;
   notes: string | null;
-  createdAt: any;
+  createdAt: string | number | null;
   customValues?: Record<number, string>;
+};
+
+/** Cuerpo del POST/PUT de jugadora (lo que construye savePlayerForm). */
+type PlayerPayload = {
+  teamId: number;
+  name: string;
+  number: number | null;
+  positions: string;
+  isAdditional: boolean;
+  height: number | null;
+  weight: number | null;
+  wingspan: number | null;
+  birthDate: string | null;
+  chronicDiseases: string;
+  previousInjuries: string;
+  allergies: string;
+  notes: string;
+  photoData: string | null;
 };
 
 type Injury = {
@@ -162,31 +180,37 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
   const fieldLabel = (key: string, fallback: string) => fieldByKey.get(key)?.label ?? fallback;
 
   // ─── Mutations ───────────────────────────────────────────────────────────────
+  // OJO: estas mutaciones usan authFetchJson, que LANZA si la respuesta no es
+  // 2xx. Antes hacían `.json()` a secas, así que un POST fallido entraba por
+  // onSuccess igualmente: el modal se cerraba, no se mostraba ningún error y la
+  // jugadora nunca aparecía en la lista (parecía un fallo de refresco de la
+  // caché). Ver LIVE-005. El cierre del modal y el reseteo del formulario los
+  // hace ahora savePlayerForm(), que sí sabe si todo el guardado ha ido bien.
   const createPlayer = useMutation({
-    mutationFn: async (data: any) => (await authFetch("/api/players", { method: "POST", body: JSON.stringify(data) }, token)).json(),
+    mutationFn: (data: PlayerPayload) =>
+      authFetchJson<{ player?: Player }>("/api/players", { method: "POST", body: JSON.stringify(data) }, token),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["players", teamId] });
-      setShowAddPlayer(false);
-      setForm(emptyPlayerForm()); setCustomForm({}); setSaveError("");
     },
   });
 
   const updatePlayer = useMutation({
-    mutationFn: async ({ id, data }: { id: number; data: any }) =>
-      (await authFetch(`/api/players/${id}`, { method: "PUT", body: JSON.stringify(data) }, token)).json(),
+    mutationFn: ({ id, data }: { id: number; data: PlayerPayload }) =>
+      authFetchJson<{ player?: Player }>(`/api/players/${id}`, { method: "PUT", body: JSON.stringify(data) }, token),
     onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["players", teamId] });
-      setEditPlayer(null);
       if (res.player) setSelectedPlayer(res.player);
     },
   });
 
   const deletePlayer = useMutation({
-    mutationFn: async (id: number) => authFetch(`/api/players/${id}`, { method: "DELETE" }, token),
+    mutationFn: (id: number) =>
+      authFetchJson<{ ok?: boolean }>(`/api/players/${id}`, { method: "DELETE" }, token),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["players", teamId] });
       setSelectedPlayer(null);
     },
+    onError: (err) => setSaveError(err instanceof Error ? err.message : "No se pudo eliminar la jugadora"),
   });
 
   const createInjury = useMutation({
@@ -290,11 +314,9 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
     try {
       let playerId = editPlayer?.id ?? null;
       if (editPlayer) {
-        const res = await updatePlayer.mutateAsync({ id: editPlayer.id, data });
-        if (res?.error) throw new Error(res.error);
+        await updatePlayer.mutateAsync({ id: editPlayer.id, data });
       } else {
         const res = await createPlayer.mutateAsync(data);
-        if (res?.error) throw new Error(res.error);
         playerId = res?.player?.id ?? null;
       }
 

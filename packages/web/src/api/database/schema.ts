@@ -151,7 +151,11 @@ export const playerInjuries = sqliteTable("player_injuries", {
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
-});
+}, (t) => ({
+  // Casi todas las consultas de lesiones filtran por jugadora (ficha, resumen,
+  // lesiones activas del equipo). Sin índice era table scan. Ver BE-031.
+  playerIdx: index("player_injuries_player_idx").on(t.playerId),
+}));
 
 // ─── PLAYER INCIDENTS (sanciones, etc.) ──────────────────────────────────────
 export const playerIncidents = sqliteTable("player_incidents", {
@@ -164,7 +168,9 @@ export const playerIncidents = sqliteTable("player_incidents", {
   createdAt: integer("created_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
-});
+}, (t) => ({
+  playerIdx: index("player_incidents_player_idx").on(t.playerId), // BE-032
+}));
 
 // ─── MATCHES (partidos) ───────────────────────────────────────────────────────
 export const matches = sqliteTable("matches", {
@@ -186,7 +192,11 @@ export const matches = sqliteTable("matches", {
   updatedAt: integer("updated_at", { mode: "timestamp" })
     .notNull()
     .$defaultFn(() => new Date()),
-});
+}, (t) => ({
+  // GET /api/matches filtra por equipo y ordena por fecha; el dashboard agrega
+  // los partidos de todos los equipos del usuario. Ver BE-020.
+  teamDateIdx: index("matches_team_date_idx").on(t.teamId, t.date),
+}));
 
 // ─── MATCH CALLUPS (convocatoria: jugador convocado sí/no) ────────────────────
 export const matchCallups = sqliteTable("match_callups", {
@@ -198,7 +208,9 @@ export const matchCallups = sqliteTable("match_callups", {
     .notNull()
     .$defaultFn(() => new Date()),
 }, (t) => ({
-  matchPlayerIdx: index("match_callups_match_player_idx").on(t.matchId, t.playerId),
+  // ÚNICO: el upsert de convocatoria es check-then-insert-or-update, así que
+  // sin restricción dos peticiones simultáneas podían duplicar la fila. Ver BE-021.
+  matchPlayerUnique: uniqueIndex("match_callups_match_player_unique").on(t.matchId, t.playerId),
 }));
 
 // ─── MATCH DOCUMENTS (PDFs de preparación del partido) ───────────────────────
@@ -236,6 +248,7 @@ export const attendance = sqliteTable("attendance", {
     .$defaultFn(() => new Date()),
 }, (t) => ({
   sessionPlayerIdx: index("attendance_session_player_idx").on(t.sessionId, t.playerId),
+  playerIdx: index("attendance_player_idx").on(t.playerId), // BE-033
 }));
 
 // ─── TEAM FORM FIELDS (configuración editable del formulario de fichas) ───────

@@ -269,17 +269,15 @@ export const matches = new Hono()
       .get();
     if (!player) return c.json({ error: "Jugador no pertenece al equipo" }, 400);
 
-    const existing = await db.select().from(schema.matchCallups)
-      .where(and(eq(schema.matchCallups.matchId, id), eq(schema.matchCallups.playerId, playerId)))
-      .get();
-
-    if (existing) {
-      await db.update(schema.matchCallups)
-        .set({ called })
-        .where(eq(schema.matchCallups.id, existing.id));
-    } else {
-      await db.insert(schema.matchCallups).values({ matchId: id, playerId, called });
-    }
+    // Upsert atómico apoyado en el índice único (matchId, playerId). Antes era
+    // check-then-insert-or-update, que con dos peticiones a la vez podía
+    // duplicar la convocatoria. Ver BE-021.
+    await db.insert(schema.matchCallups)
+      .values({ matchId: id, playerId, called })
+      .onConflictDoUpdate({
+        target: [schema.matchCallups.matchId, schema.matchCallups.playerId],
+        set: { called },
+      });
 
     return c.json({ ok: true }, 200);
   })

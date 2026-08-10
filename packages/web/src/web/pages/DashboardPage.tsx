@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
-import { authFetch } from "../lib/authFetch";
+import { authFetchJson } from "../lib/authFetch";
 import Topbar from "../components/Topbar";
 import StatsStrip, { StatCard } from "../components/StatsStrip";
 import TeamCardCompact, { AddTeamCard, type TeamCardData } from "../components/TeamCardCompact";
@@ -24,12 +24,12 @@ export default function DashboardPage() {
   const { user, token } = useAuth();
   const isMobile = useIsMobile();
 
-  const { data, isLoading } = useQuery({
+  const { data, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ["dashboard"],
-    queryFn: async () => {
-      const res = await authFetch("/api/dashboard", {}, token);
-      return (await res.json()) as DashboardData;
-    },
+    // authFetchJson lanza si la respuesta no es 2xx: antes un 500 se pintaba
+    // como "0 jugadoras, 0 sesiones, 0 partidos", como si se hubieran perdido
+    // los datos. Ver F-034.
+    queryFn: () => authFetchJson<DashboardData>("/api/dashboard", {}, token),
     enabled: !!user,
   });
 
@@ -56,6 +56,34 @@ export default function DashboardPage() {
       />
 
       <div className="page-body">
+        {isError && (
+          <div
+            className="card"
+            role="alert"
+            style={{
+              marginBottom: 20,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              gap: 12,
+              flexWrap: "wrap",
+              borderColor: "rgba(248,113,113,0.35)",
+            }}
+          >
+            <div>
+              <p style={{ margin: 0, fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>
+                No se han podido cargar los datos
+              </p>
+              <p style={{ margin: "4px 0 0", fontSize: 13, color: "var(--text-secondary)" }}>
+                Las cifras de abajo pueden estar incompletas. Comprueba tu conexión y reinténtalo.
+              </p>
+            </div>
+            <button type="button" className="btn-ghost" onClick={() => refetch()} disabled={isFetching}>
+              {isFetching ? "Reintentando…" : "Reintentar"}
+            </button>
+          </div>
+        )}
+
         <StatsStrip>
           <StatCard icon={PATHS.players} color="#22d3ee" value={stats?.players ?? 0} label="Jugadores" />
           <StatCard icon={PATHS.calendar} color="#a855f7" value={stats?.sessions ?? 0} label="Sesiones" />

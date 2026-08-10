@@ -24,7 +24,12 @@ export default function BottomNav() {
   }) => {
     const isActive = item.match(location);
     return (
-      <Link href={item.path} style={{ flex: 1, display: "flex", textDecoration: "none" }}>
+      <Link
+        href={item.path}
+        aria-label={item.label}
+        aria-current={isActive ? "page" : undefined}
+        style={{ flex: 1, display: "flex", textDecoration: "none" }}
+      >
         <div
           style={{
             display: "flex",
@@ -50,6 +55,7 @@ export default function BottomNav() {
 
   return (
     <nav
+      aria-label="Navegación principal"
       style={{
         position: "fixed",
         paddingBottom: "env(safe-area-inset-bottom)",
@@ -69,7 +75,11 @@ export default function BottomNav() {
       ))}
 
       {/* FAB central — Nueva sesión */}
-      <Link href="/sessions/new" style={{ flex: 1, display: "flex", textDecoration: "none" }}>
+      <Link
+        href="/sessions/new"
+        aria-label="Nueva sesión"
+        style={{ flex: 1, display: "flex", textDecoration: "none" }}
+      >
         <div style={{ display: "flex", alignItems: "center", justifyContent: "center", flex: 1 }}>
           <div
             style={{

@@ -5,6 +5,7 @@ import { eq, and, inArray } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { assertBase64FieldsWithinLimit, PayloadTooLargeError } from "../lib/validation";
 import { checkImportRateLimit } from "../lib/rate-limit";
+import { getMembership } from "../lib/team";
 import {
   coerceValue,
   getCustomValuesMap,
@@ -14,12 +15,6 @@ import {
   upsertCustomValue,
 } from "../lib/form-fields";
 
-
-async function getMembership(userId: number, teamId: number) {
-  const [m] = await db.select().from(schema.teamMembers)
-    .where(and(eq(schema.teamMembers.teamId, teamId), eq(schema.teamMembers.userId, userId)));
-  return m ?? null;
-}
 
 export const players = new Hono()
   .get("/", async (c) => {

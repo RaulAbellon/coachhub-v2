@@ -3,6 +3,7 @@ import { db } from "../database";
 import * as schema from "../database/schema";
 import { eq, and, desc, asc, isNull, inArray } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { canWrite, getMembership } from "../lib/team";
 
 // Categorías admitidas para una prueba física. Cualquier otro valor cae a "otro".
 const CATEGORIES = new Set([
@@ -20,18 +21,6 @@ function normalizeCategory(v: unknown): string {
 
 function isValidDate(v: unknown): v is string {
   return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
-}
-
-async function getMembership(userId: number, teamId: number) {
-  const [m] = await db
-    .select()
-    .from(schema.teamMembers)
-    .where(and(eq(schema.teamMembers.teamId, teamId), eq(schema.teamMembers.userId, userId)));
-  return m ?? null;
-}
-
-function canWrite(m: { role: string } | null): boolean {
-  return m?.role === "owner" || m?.role === "editor";
 }
 
 export const evaluations = new Hono()

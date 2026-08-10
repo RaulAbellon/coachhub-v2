@@ -16,6 +16,7 @@ import MatchPage from "./pages/MatchPage";
 import PlayersPage from "./pages/PlayersPage";
 import EvaluationsPage from "./pages/EvaluationsPage";
 import ProfilePage from "./pages/ProfilePage";
+import NotFoundPage from "./pages/NotFoundPage";
 import LoginPage from "./pages/LoginPage";
 import ResetPasswordPage from "./pages/ResetPasswordPage";
 import Sidebar from "./components/Sidebar";
@@ -100,6 +101,8 @@ function AppLayout() {
           </Route>
           <Route path="/profile" component={ProfilePage} />
           <Route path="/login" component={LoginPage} />
+          {/* Catch-all: URLs inválidas mostraban un área de contenido vacía. Ver F-001. */}
+          <Route component={NotFoundPage} />
         </Switch>
       </main>
     </div>

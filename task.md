@@ -437,3 +437,78 @@ tablas). Backup previo: `backups/coachhub-backup-2026-08-10.json`.
 ### Scripts añadidos
 - `scripts/seed_eval_test.mjs` — crea usuario + equipo + 4 jugadoras de prueba vía API.
 - `scripts/seed_eval_viewer.mjs` — crea un viewer unido al equipo y comprueba los 403.
+
+---
+
+## 2026-08-10 — Auditoría externa v2 (PDF `CoachHub_v2_Auditoria_Completa`)
+
+Revisada la auditoría completa. **No se ha aplicado todo**: varios hallazgos están mal
+diagnosticados o contradicen decisiones ya tomadas. Detalle abajo.
+
+### Aplicado
+
+**Seguridad**
+- **BE-019 (IDOR asistencia, el más grave).** `PUT /api/attendance/:sessionId/:playerId`
+  comprobaba el acceso al equipo de la sesión pero **no** que la jugadora perteneciera a
+  ese equipo: un editor del equipo A podía cambiar la asistencia de una jugadora del
+  equipo B conociendo su id. Ahora se valida `players.teamId === session.teamId` → 403.
+  Verificado con curl: sesión 169 (equipo 40) + jugadora 80 (equipo 39) → **403
+  "La jugadora no pertenece al equipo de la sesión"**.
+
+**Backend / datos**
+- **BE-002.** `src/api/index.ts` no tenía `notFound` ni `onError`: una ruta de API
+  inexistente devolvía el HTML del SPA y una excepción, el stack de Hono. Ahora
+  404 `{"error":"Endpoint no encontrado"}` y 500 JSON. Verificado con curl.
+- **BE-003.** `database/index.ts` usaba `process.env.DATABASE_URL!`; ahora lanza un error
+  explícito al arrancar si falta.
+- **BE-021.** `match_callups` no tenía restricción de unicidad → convocatorias duplicadas.
+  Añadido `uniqueIndex("match_callups_match_player_unique")` y el upsert de `matches.ts`
+  pasa a `onConflictDoUpdate`. Comprobado antes con `/tmp/dupchk.mjs`: 0 duplicados
+  previos, así que el índice entra sin conflicto.
+- **BE-020/031/032/033.** Índices añadidos: `player_injuries_player_idx`,
+  `player_incidents_player_idx`, `matches_team_date_idx`, `attendance_player_idx`.
+- **BE-041.** `getMembership` estaba duplicado en 4 rutas. Extraído a
+  `src/api/lib/team.ts` (`getMembership` + `canWrite`) y consumido desde `players.ts`,
+  `form-fields.ts` y `evaluations.ts`.
+- Los 5 índices aplicados con **`bun run db:push`** y verificados en `sqlite_master`.
+  Backup previo: `backups/coachhub-backup-2026-08-10.json` (60 filas / 18 tablas).
+
+**Frontend**
+- **F-009.** `authFetchJson<T>()` nuevo en `lib/authFetch.ts`: lanza si `!res.ok`
+  extrayendo `body.error`. Antes un 500 se parseaba como JSON y llegaba basura a la UI.
+  Migradas las queries/mutaciones de `EvaluationsPage`, `DashboardPage` y `PlayersPage`.
+- **F-034.** El dashboard se quedaba en blanco si fallaba una query. Ahora banner
+  `role="alert"` con botón **Reintentar**.
+- **F-001.** Nueva `NotFoundPage` + `<Route component={NotFoundPage} />` al final del
+  Switch autenticado. Antes una URL inválida daba pantalla vacía. Verificado en E2E.
+- **F-031.** En `EvaluationsPage`, el cleanup del efecto de autoguardado ahora llama a
+  `flushRef.current()`: al navegar durante el debounce se perdían los últimos valores.
+- **F-014 / LIVE-012 (a11y).** `ModalShell` pasa a `role="dialog"` + `aria-modal="true"`,
+  cierra con **Escape**, atrapa el foco con Tab/Shift+Tab y lo devuelve al elemento
+  previo al cerrarse. `BottomNav`: `aria-label` en los 4 enlaces, `aria-current="page"`
+  en el activo, `aria-label="Nueva sesión"` en el FAB central y `aria-label` en el `<nav>`.
+
+### Descartado (con motivo)
+- **BE-001 (path traversal).** Exagerado, y el fichero implicado es `__server.ts`, que es
+  plantilla de la plataforma: **prohibido editar**.
+- **BE-036 (migraciones drizzle).** Contradice la decisión ya tomada: `db:generate`
+  genera un `0000_*.sql` con TODAS las tablas y es peligroso sobre la BD real. Se sigue
+  usando `db:push`.
+- **F-023 (partir `PlayersPage`).** Ya descartado antes por relación riesgo/beneficio.
+- **LIVE-001 / LIVE-002.** Culpan a "MUI". **La app no tiene MUI instalado**; el
+  diagnóstico es falso. Lo real detrás era falta de a11y, ya cubierto arriba.
+- **LIVE-010.** Dice que la Sidebar navega mal; `Sidebar.tsx` usa `<Link href="/teams">`
+  fijo. No reproducible.
+- **LIVE-011 (dashboard móvil vacío).** Falso positivo del snapshot de accesibilidad.
+  Comprobado con Playwright `is_mobile=True, has_touch=True` (iPhone 390x844): el
+  dashboard renderiza contadores, microciclo, semana actual y sesiones. 
+
+### Verificado
+- `bunx tsc -b --force` → 0 errores.
+- `bunx vitest run` → **79/79 pass**.
+- `bun run build` → ok. `bunx pm2 restart web-app` → online en :4200, sin errores nuevos
+  en logs (solo el aviso conocido de Resend con correos `example.com`).
+- E2E Playwright (Chrome, móvil real): login, dashboard renderizado, aria-labels del
+  BottomNav `['Inicio','Calendario','Nueva sesión','Equipos','Perfil']`, y la página 404.
+- Datos de prueba del E2E (usuario 28 `e2etmp8899`, equipo 40, sesión 169) eliminados.
+  Quedan 6 usuarios y 6 equipos, los mismos de antes.

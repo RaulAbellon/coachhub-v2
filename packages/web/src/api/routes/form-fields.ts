@@ -3,6 +3,7 @@ import { db } from "../database";
 import * as schema from "../database/schema";
 import { and, eq } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { getMembership } from "../lib/team";
 import {
   BUILTIN_BY_KEY,
   FIELD_TYPES,
@@ -13,12 +14,6 @@ import {
   parseOptions,
   slugifyKey,
 } from "../lib/form-fields";
-
-async function getMembership(userId: number, teamId: number) {
-  const [m] = await db.select().from(schema.teamMembers)
-    .where(and(eq(schema.teamMembers.teamId, teamId), eq(schema.teamMembers.userId, userId)));
-  return m ?? null;
-}
 
 /** Devuelve { user, membership } o un objeto de error listo para responder. */
 async function requireTeamAccess(c: any, teamId: number, needEditor: boolean) {

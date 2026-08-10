@@ -5,7 +5,8 @@ import { useAuth } from "../context/AuthContext";
 import { useIsMobile } from "../hooks/useIsMobile";
 import Topbar from "../components/Topbar";
 import { Icon, PATHS } from "../components/icons";
-import { authFetch } from "../lib/authFetch";
+import { authFetch, authFetchJson } from "../lib/authFetch";
+import type { TeamGender } from "../lib/gender";
 import { playerWord } from "../lib/gender";
 import { AdditionalBadge } from "../components/AdditionalBadge";
 import {
@@ -20,6 +21,7 @@ import {
   type EvalSession,
   type EvalTest,
   type EvalValue,
+  type EvalValueEnriched,
 } from "../lib/evaluations";
 
 type Player = {
@@ -29,6 +31,13 @@ type Player = {
   photoData: string | null;
   isAdditional: boolean;
   positions: string;
+};
+
+type TeamInfo = {
+  id: number;
+  name: string;
+  gender?: TeamGender;
+  role?: "owner" | "editor" | "viewer";
 };
 
 type View = "tests" | "record" | "compare";
@@ -104,27 +113,27 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
   // ─── Queries ────────────────────────────────────────────────────────────────
   const { data: teamData } = useQuery({
     queryKey: ["team", teamId],
-    queryFn: async () => (await authFetch(`/api/teams/${teamId}`, {}, token)).json(),
+    queryFn: () => authFetchJson<{ team?: TeamInfo }>(`/api/teams/${teamId}`, {}, token),
     enabled: !!teamId,
   });
 
   const { data: testsData, isLoading: testsLoading } = useQuery({
     queryKey: ["eval-tests", teamId],
     queryFn: async () =>
-      (await authFetch(`/api/evaluations/tests?teamId=${teamId}`, {}, token)).json(),
+      authFetchJson<{ tests: EvalTest[] }>(`/api/evaluations/tests?teamId=${teamId}`, {}, token),
     enabled: !!teamId,
   });
 
   const { data: sessionsData } = useQuery({
     queryKey: ["eval-sessions", teamId],
     queryFn: async () =>
-      (await authFetch(`/api/evaluations/sessions?teamId=${teamId}`, {}, token)).json(),
+      authFetchJson<{ sessions: EvalSession[] }>(`/api/evaluations/sessions?teamId=${teamId}`, {}, token),
     enabled: !!teamId,
   });
 
   const { data: playersData } = useQuery({
     queryKey: ["players", teamId],
-    queryFn: async () => (await authFetch(`/api/players?teamId=${teamId}`, {}, token)).json(),
+    queryFn: () => authFetchJson<{ players: Player[] }>(`/api/players?teamId=${teamId}`, {}, token),
     enabled: !!teamId,
   });
 
@@ -169,10 +178,12 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
 
   const { data: valuesData } = useQuery({
     queryKey: ["eval-values", currentSession?.id],
-    queryFn: async () =>
-      (
-        await authFetch(`/api/evaluations/values?sessionId=${currentSession!.id}`, {}, token)
-      ).json(),
+    queryFn: () =>
+      authFetchJson<{ values: EvalValue[] }>(
+        `/api/evaluations/values?sessionId=${currentSession!.id}`,
+        {},
+        token,
+      ),
     enabled: !!currentSession,
   });
   const serverValues: EvalValue[] = valuesData?.values ?? [];
@@ -180,8 +191,12 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
   // Historial completo del equipo: comparativa y exportación.
   const { data: historyData } = useQuery({
     queryKey: ["eval-history", teamId],
-    queryFn: async () =>
-      (await authFetch(`/api/evaluations/history?teamId=${teamId}`, {}, token)).json(),
+    queryFn: () =>
+      authFetchJson<{ sessions: EvalSession[]; values: EvalValueEnriched[] }>(
+        `/api/evaluations/history?teamId=${teamId}`,
+        {},
+        token,
+      ),
     enabled: !!teamId && (view === "compare" || tests.length > 0),
   });
 
@@ -212,7 +227,11 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
 
   useEffect(() => {
     return () => {
+      // Al desmontar hay que VOLCAR lo pendiente, no solo cancelar el timer:
+      // si escribes un valor y navegas fuera antes de los 600 ms, el dato se
+      // perdía en silencio. Ver F-031.
       if (timerRef.current) clearTimeout(timerRef.current);
+      flushRef.current();
     };
   }, []);
 
@@ -1119,9 +1138,43 @@ function CloseButton({ onClick }: { onClick: () => void }) {
 }
 
 function ModalShell({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
+  const panelRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    const prevFocus = document.activeElement as HTMLElement | null;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape") {
+        e.stopPropagation();
+        onClose();
+        return;
+      }
+      if (e.key !== "Tab" || !panelRef.current) return;
+      const focusables = panelRef.current.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (focusables.length === 0) return;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const active = document.activeElement as HTMLElement | null;
+      if (e.shiftKey && (active === first || !panelRef.current.contains(active))) {
+        e.preventDefault();
+        last.focus();
+      } else if (!e.shiftKey && active === last) {
+        e.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      prevFocus?.focus?.();
+    };
+  }, [onClose]);
+
   return (
     <div
       onClick={onClose}
+      role="presentation"
       style={{
         position: "fixed",
         inset: 0,
@@ -1134,7 +1187,10 @@ function ModalShell({ children, onClose }: { children: React.ReactNode; onClose:
       }}
     >
       <div
+        ref={panelRef}
         className="card fade-in"
+        role="dialog"
+        aria-modal="true"
         onClick={(e) => e.stopPropagation()}
         style={{ padding: 28, maxWidth: 480, width: "100%", maxHeight: "90vh", overflowY: "auto" }}
       >

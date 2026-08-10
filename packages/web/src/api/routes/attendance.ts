@@ -174,6 +174,14 @@ export const attendanceRoutes = new Hono()
       .get();
     if (!member || member.role === "viewer") return c.json({ error: "Acceso denegado" }, 403);
 
+    // La jugadora debe pertenecer al equipo de la sesión. Sin este check, un
+    // usuario con acceso al equipo A podía modificar la asistencia de una
+    // jugadora del equipo B conociendo su id (IDOR entre equipos). Ver BE-019.
+    const player = await db.select().from(schema.players)
+      .where(and(eq(schema.players.id, playerId), eq(schema.players.teamId, session.teamId)))
+      .get();
+    if (!player) return c.json({ error: "La jugadora no pertenece al equipo de la sesión" }, 403);
+
     const body = await c.req.json();
     const valid = ["present", "absent", "justified", "injured"];
     if (!valid.includes(body.status)) return c.json({ error: "Estado inválido" }, 400);

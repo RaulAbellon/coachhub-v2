@@ -6,6 +6,7 @@ import { eq, and, gt } from "drizzle-orm";
 import { createHash, randomBytes } from "crypto";
 import bcrypt from "bcryptjs";
 import { sendEmail, passwordResetEmailHtml, welcomeEmailHtml } from "../services/email";
+import { checkAuthRateLimit, clearAuthFailures, recordAuthFailure } from "../lib/rate-limit";
 
 const VALID_ROLES = ["entrenador", "analista", "preparador_fisico", "oficial", "delegado", "otro"];
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -17,6 +18,24 @@ function baseUrlFromRequest(c: any): string {
   const proto = c.req.header("x-forwarded-proto") || "https";
   const host = c.req.header("host") || "localhost";
   return `${proto}://${host}`;
+}
+
+// IP del cliente para el rate limit de autenticación. Detrás del proxy de la
+// plataforma la IP real viaja en X-Forwarded-For (primer valor de la lista).
+function clientIp(c: any): string {
+  const fwd = c.req.header("x-forwarded-for");
+  if (fwd) return fwd.split(",")[0].trim();
+  return c.req.header("x-real-ip") || "unknown";
+}
+
+// Respuesta 429 común para login/registro.
+function tooManyAttempts(c: any, retryAfterMs?: number) {
+  const seconds = Math.ceil((retryAfterMs ?? 60_000) / 1000);
+  return c.json(
+    { error: `Demasiados intentos. Vuelve a probar en ${Math.ceil(seconds / 60)} min.` },
+    429,
+    { "Retry-After": String(seconds) },
+  );
 }
 
 const BCRYPT_COST = 12;
@@ -106,6 +125,14 @@ function tokenFromRequest(c: any): string | null {
 
 export const auth = new Hono()
   .post("/register", async (c) => {
+    // S-01: sin cuota, este endpoint permite crear cuentas en masa.
+    const ip = clientIp(c);
+    const quota = checkAuthRateLimit(ip);
+    if (!quota.allowed) return tooManyAttempts(c, quota.retryAfterMs);
+    // En el registro cuenta cada intento (también los correctos): así se limita
+    // la creación masiva de cuentas, no solo los fallos de validación.
+    recordAuthFailure(ip);
+
     const body = await c.req.json().catch(() => null);
     if (!body) return c.json({ error: "Cuerpo de la petición no es JSON válido" }, 400);
     const { username, password, email, firstName, lastName, birthDate, role } = body;
@@ -166,6 +193,12 @@ export const auth = new Hono()
     return c.json({ token, user: { id: user.id, username: user.username, displayName: user.displayName } }, 201);
   })
   .post("/login", async (c) => {
+    // S-01: sin cuota se podía hacer fuerza bruta ilimitada. Solo se cuentan
+    // los intentos FALLIDOS, así que un usuario legítimo nunca se bloquea.
+    const ip = clientIp(c);
+    const quota = checkAuthRateLimit(ip);
+    if (!quota.allowed) return tooManyAttempts(c, quota.retryAfterMs);
+
     const body = await c.req.json().catch(() => null);
     if (!body) return c.json({ error: "Cuerpo de la petición no es JSON válido" }, 400);
     const { username, password } = body;
@@ -173,8 +206,10 @@ export const auth = new Hono()
 
     const [user] = await db.select().from(schema.users).where(eq(schema.users.username, username.trim().toLowerCase()));
     if (!user || !(await verifyPassword(password, user.passwordHash))) {
+      recordAuthFailure(ip);
       return c.json({ error: "Credenciales incorrectas" }, 401);
     }
+    clearAuthFailures(ip);
 
     // Migración transparente: si el hash almacenado es el formato legado
     // sha256+salt estático, se re-hashea con bcrypt ahora que sabemos la

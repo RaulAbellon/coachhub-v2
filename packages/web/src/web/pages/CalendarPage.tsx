@@ -9,6 +9,7 @@ import { sessionStyle, hexToRgba, MATCH_COLOR } from "../lib/sessionTypes";
 import { Icon, PATHS } from "../components/icons";
 import McSelector from "../components/McSelector";
 import { monthMicrocycles, findMicrocycleIndex, weekLabel } from "../lib/microcycles";
+import { formatWeekdayDateES } from "../lib/dates";
 
 const DAYS_DESKTOP = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
 const DAYS_MOBILE  = ["L",   "M",   "X",   "J",   "V",   "S",   "D"];
@@ -22,12 +23,6 @@ function getDaysInMonth(year: number, month: number) {
 function getFirstDayOfMonth(year: number, month: number) {
   const d = new Date(year, month, 1).getDay();
   return d === 0 ? 6 : d - 1;
-}
-function formatDateES(dateStr: string) {
-  const txt = new Date(dateStr + "T12:00:00").toLocaleDateString("es-ES", {
-    weekday: "long", day: "numeric", month: "long",
-  });
-  return txt.charAt(0).toUpperCase() + txt.slice(1);
 }
 
 interface Session {
@@ -218,7 +213,7 @@ export default function CalendarPage() {
           {/* Sheet header */}
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "8px 20px 16px" }}>
             <p style={{ fontSize: 15, fontWeight: 700, color: "var(--text-primary)" }}>
-              {formatDateES(selectedDay)}
+              {formatWeekdayDateES(selectedDay)}
             </p>
             <button
               onClick={() => setSelectedDay(null)}
@@ -588,7 +583,7 @@ export default function CalendarPage() {
               <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 14 }}>
                 <div>
                   <p style={{ fontSize: 13, fontWeight: 700, color: "var(--text-primary)", lineHeight: 1.3 }}>
-                    {formatDateES(selectedDay)}
+                    {formatWeekdayDateES(selectedDay)}
                   </p>
                   {selectedSessions.length === 0 && selectedMatches.length === 0 && (
                     <p style={{ fontSize: 11, color: "var(--text-secondary)", marginTop: 3 }}>Nada programado</p>

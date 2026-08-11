@@ -1,4 +1,5 @@
-import { capFirst, SESSION_TYPE_OPTIONS } from "../lib/sessionTypes";
+import { SESSION_TYPE_OPTIONS } from "../lib/sessionTypes";
+import { formatFullDateES } from "../lib/dates";
 import { useState, useEffect } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
@@ -299,7 +300,7 @@ export default function SessionPage({ id }: { id?: string }) {
   const allPlayers = playersData?.players ?? [];
   const activeInjuries: any[] = activeInjuriesData?.injuries ?? [];
   const formattedDate = session
-    ? capFirst(new Date(session.date + "T00:00:00").toLocaleDateString("es-ES", { weekday: "long", year: "numeric", month: "long", day: "numeric" }))
+    ? formatFullDateES(session.date)
     : "";
   const presentCount = attendance.filter((r: any) => r.status === "present").length;
 

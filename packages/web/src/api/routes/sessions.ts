@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import { db } from "../database";
 import * as schema from "../database/schema";
-import { eq, and, desc, asc, inArray } from "drizzle-orm";
+import { eq, and, desc, asc, gte, inArray, lte } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
 import { assertBase64FieldsWithinLimit, PayloadTooLargeError } from "../lib/validation";
 
@@ -67,6 +67,15 @@ async function recalcTeamMicrocycles(teamId: number, forDate?: string): Promise<
   return byMonday.get(mondayOf(forDate)) ?? 1;
 }
 
+/**
+ * Rango [desde, hasta] de un mes "YYYY-MM" para filtrar en SQL en vez de en JS.
+ * Devuelve null si el valor no tiene el formato esperado.
+ */
+function monthRange(month: string | undefined): { from: string; to: string } | null {
+  if (!month || !/^\d{4}-\d{2}$/.test(month)) return null;
+  return { from: `${month}-01`, to: `${month}-31` };
+}
+
 export const sessions = new Hono()
   // GET /api/sessions?teamId=X&month=YYYY-MM
   .get("/", async (c) => {
@@ -74,7 +83,7 @@ export const sessions = new Hono()
     if (!user) return c.json({ error: "No autorizado" }, 401);
 
     const teamId = c.req.query("teamId");
-    const month = c.req.query("month");
+    const range = monthRange(c.req.query("month"));
 
     if (!teamId) return c.json({ sessions: [] });
 
@@ -102,11 +111,15 @@ export const sessions = new Hono()
       createdAt: schema.sessions.createdAt,
       updatedAt: schema.sessions.updatedAt,
     }).from(schema.sessions)
-      .where(eq(schema.sessions.teamId, Number(teamId)))
+      .where(and(
+        eq(schema.sessions.teamId, Number(teamId)),
+        // S-08: el filtro de mes va en SQL; antes se traían TODAS las sesiones
+        // del equipo y se descartaban en memoria.
+        ...(range ? [gte(schema.sessions.date, range.from), lte(schema.sessions.date, range.to)] : []),
+      ))
       .orderBy(desc(schema.sessions.date));
 
-    const filtered = month ? all.filter(s => s.date.startsWith(month)) : all;
-    return c.json({ sessions: filtered }, 200);
+    return c.json({ sessions: all }, 200);
   })
 
   // GET /api/sessions/all-teams — all sessions across all user's teams (for unified calendar)
@@ -114,7 +127,7 @@ export const sessions = new Hono()
     const user = await requireAuth(c);
     if (!user) return c.json({ error: "No autorizado" }, 401);
 
-    const month = c.req.query("month");
+    const range = monthRange(c.req.query("month"));
 
     // Get all teams user has access to
     const memberships = await db.select({ teamId: schema.teamMembers.teamId, role: schema.teamMembers.role })
@@ -148,13 +161,14 @@ export const sessions = new Hono()
       createdAt: schema.sessions.createdAt,
       updatedAt: schema.sessions.updatedAt,
     }).from(schema.sessions)
-      .where(inArray(schema.sessions.teamId, teamIds))
+      .where(and(
+        inArray(schema.sessions.teamId, teamIds),
+        // S-08: filtro de mes en SQL (ver monthRange).
+        ...(range ? [gte(schema.sessions.date, range.from), lte(schema.sessions.date, range.to)] : []),
+      ))
       .orderBy(asc(schema.sessions.date));
 
-    const filtered = month ? allSessions.filter(s => s.date.startsWith(month)) : allSessions;
-    filtered.sort((a, b) => a.date.localeCompare(b.date));
-
-    return c.json({ sessions: filtered, teams: userTeams }, 200);
+    return c.json({ sessions: allSessions, teams: userTeams }, 200);
   })
 
   // GET /api/sessions/:id

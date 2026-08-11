@@ -97,18 +97,6 @@ export function trendColor(trend: Trend | null): string {
   return trend.improved ? "var(--accent-green)" : "var(--danger)";
 }
 
-export function formatDateES(dateStr: string): string {
-  const d = new Date(dateStr + "T12:00:00");
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return d.toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
-}
-
-export function formatDateShortES(dateStr: string): string {
-  const d = new Date(dateStr + "T12:00:00");
-  if (Number.isNaN(d.getTime())) return dateStr;
-  return d.toLocaleDateString("es-ES", { day: "2-digit", month: "short" });
-}
-
 /** Estadísticas de una prueba dentro de una jornada (para la comparativa). */
 export type TestStats = {
   count: number;

@@ -512,3 +512,74 @@ diagnosticados o contradicen decisiones ya tomadas. Detalle abajo.
   BottomNav `['Inicio','Calendario','Nueva sesión','Equipos','Perfil']`, y la página 404.
 - Datos de prueba del E2E (usuario 28 `e2etmp8899`, equipo 40, sesión 169) eliminados.
   Quedan 6 usuarios y 6 equipos, los mismos de antes.
+
+---
+
+## Ronda 11/08/2026 — Auditoría externa "CoachHub_v2_Auditoria_Completa_GitHub_Live"
+
+> **Aviso importante:** el informe audita el commit `8f6bc14` (06/08/2026). Desde ahí
+> había 8 commits, por lo que **11 de sus hallazgos ya estaban corregidos** en el código
+> actual (ver "Descartado por ser falso").
+
+### Aplicado
+- **S-01 (fuerza bruta en login/registro).** `api/lib/rate-limit.ts` reescrito como
+  limitador genérico con dos buckets: `IMPORT` (10 req/60 s, importación Google Forms) y
+  `AUTH` (10 intentos/15 min por IP). Nuevas funciones `checkAuthRateLimit`,
+  `recordAuthFailure`, `clearAuthFailures`, `__resetRateLimits` (tests) y purga periódica
+  de claves caducadas.
+  - `POST /api/auth/login`: solo cuenta los intentos **fallidos**; un login correcto
+    llama a `clearAuthFailures`, así un usuario legítimo nunca se autobloquea.
+  - `POST /api/auth/register`: cuenta **cada** intento (limita la creación masiva).
+  - Respuesta `429` con cabecera `Retry-After` y mensaje en castellano. IP tomada de
+    `X-Forwarded-For` → `X-Real-IP` → `"unknown"`.
+- **Cascade de valoraciones en `DELETE /api/teams/:id`** (hallazgo propio, no del informe):
+  al borrar un equipo quedaban huérfanos `evaluation_values`, `evaluation_sessions` y
+  `evaluation_tests`. Ahora se borran dentro del mismo `db.batch` atómico.
+- **F-0074 parcial.** `uniqueIndex("attendance_session_player_unique")` en `attendance`
+  (sustituye al índice no único) + `onConflictDoNothing` en `POST /api/attendance/:sessionId/init`,
+  que ya no puede duplicar filas si se llama dos veces.
+- **S-08 (filtro de mes en memoria).** `sessions.ts`: helper `monthRange()` y filtros
+  `gte`/`lte` en SQL en `GET /` y `GET /all-teams`; fuera los `.filter(s => s.date.startsWith(month))`.
+- **F-0059 (permisos en `PlayersPage`).** `canEdit` derivado de `team.role`
+  (owner/editor). Se ocultan a los `viewer`: botón de añadir del Topbar y del empty
+  state, Editar/Eliminar ficha, "+ Nueva" lesión y las acciones de `InjuryCard`.
+  "Exportar ficha en PDF" sigue visible para viewer (intencionado).
+- **Q-03 / Q-04 / Q-13 (duplicados).** Nuevo `web/lib/dates.ts` con `formatDateES`,
+  `formatDateShortES`, `formatWeekdayDateES`, `formatFullDateES` y `formatDateNumeric`.
+  Migrados `EvaluationsPage`, `PlayersPage`, `CalendarPage`, `MatchPage` y `SessionPage`;
+  eliminadas 6 copias locales de formateadores de fecha. `TeamSessionsPage` deja de tener
+  su propio `hexToRgba` (sin guard de hex inválido) y usa el de `lib/sessionTypes`.
+
+### Descartado por ser FALSO (ya estaba arreglado antes de esta ronda)
+S-02 (existe `team_members_team_user_unique`), S-03 (`authTokens.expiresAt` existe),
+S-04 (`teams_share_code_unique` + `teams_import_token_unique`), S-05 (ya valida
+`data:application/pdf`), S-06 (ya usa `db.batch` atómico), S-07 (purga implementada),
+Q-01 (los 3 "ficheros muertos" no existen), Q-09 (`SESSION_TYPE_OPTIONS` ya centralizado),
+BE-019/BE-020 y F-0064/F-0070/F-0075 (IDOR de miembros ya validado con `teamId`, cascade
+de matches ya presente, null-check presente, los 8 índices FK ya existen).
+
+### Descartado por criterio
+- **LIVE-P01 / LIVE-P02.** `auth/me` se llama en un `useEffect(…, [])`, una sola vez.
+  No hay `window.location.href` ni `<a href="/">`: la navegación es SPA con wouter. Las
+  "5-6 llamadas" que midió el auditor son de su bot recargando la página.
+- **LIVE-U01.** La "X" para miércoles es correcta en castellano. **No tocar.**
+- **LIVE-U02.** Su bot inyecta valores en los inputs sin disparar eventos de React.
+- **Q-02** (partir ficheros >800 líneas) y **Q-06 / Q-07** (unificar `lucide-react` vs
+  `<Icon>`, Tailwind vs CSS vars): riesgo alto o puramente cosmético.
+- **Q-08 (`labelStyle`/`inputStyle` duplicados).** Las 9 definiciones **no** son
+  idénticas: varían `letterSpacing` (.06 vs .07) y el `marginTop`, y los `inputStyle` de
+  `NewSessionPage`/`NewMatchPage` son distintos. Unificarlas cambiaría el aspecto visual.
+
+### Verificado
+- `bunx tsc -b --force` → 0 errores. `bunx vitest run` → **85/85** (6 tests nuevos del
+  rate limit de auth). `bun run build` → ok. `bunx pm2 restart web-app` → online en :4200.
+- `bun run db:push` aplicado y comprobado en Turso: existe
+  `attendance_session_player_unique` (UNIQUE sobre `session_id, player_id`) y ya no está
+  `attendance_session_player_idx`.
+- Rate limit con curl: 10×401 y el 11º → `429` + `Retry-After: 899`; otra IP sigue en 401;
+  un login correcto limpia la cuota (después admite otros 10 fallos).
+- `GET /api/sessions?teamId&month`: agosto devuelve la sesión, julio vacío, sin `month`
+  igual que antes.
+- Cascade: equipo con jugadora + prueba + jornada + valor → `DELETE` devuelve **200** y en
+  la BD no queda ninguna fila huérfana de las 6 tablas comprobadas.
+- Datos de prueba eliminados: quedan **6 usuarios** y los equipos originales.

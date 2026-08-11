@@ -225,6 +225,17 @@ export const teams = new Hono()
       .where(eq(schema.matches.teamId, teamId));
     const matchIds = teamMatches.map(m => m.id);
 
+    // Módulo de valoraciones físicas: sus 3 tablas también referencian al equipo
+    // (y a las jugadoras), así que sin borrarlas el DELETE del equipo fallaba
+    // con un 500 por violación de FK.
+    const teamEvalSessions = await db.select({ id: schema.evaluationSessions.id })
+      .from(schema.evaluationSessions).where(eq(schema.evaluationSessions.teamId, teamId));
+    const evalSessionIds = teamEvalSessions.map(s => s.id);
+
+    const teamEvalTests = await db.select({ id: schema.evaluationTests.id })
+      .from(schema.evaluationTests).where(eq(schema.evaluationTests.teamId, teamId));
+    const evalTestIds = teamEvalTests.map(t => t.id);
+
     // Todo el borrado va en un único batch: si falla cualquier sentencia, no se
     // aplica ninguna y el equipo no queda a medio borrar (huérfanos en BD).
     const statements: BatchItem<"sqlite">[] = [];
@@ -243,6 +254,22 @@ export const teams = new Hono()
       statements.push(db.delete(schema.matchCallups).where(inArray(schema.matchCallups.playerId, playerIds)));
       statements.push(db.delete(schema.playerCustomValues).where(inArray(schema.playerCustomValues.playerId, playerIds)));
     }
+    // Los valores de valoración se borran por sesión, por prueba y por jugadora:
+    // cualquiera de las tres FK bloquearía el borrado si quedara alguna fila.
+    if (evalSessionIds.length > 0) {
+      statements.push(db.delete(schema.evaluationValues)
+        .where(inArray(schema.evaluationValues.sessionId, evalSessionIds)));
+    }
+    if (evalTestIds.length > 0) {
+      statements.push(db.delete(schema.evaluationValues)
+        .where(inArray(schema.evaluationValues.testId, evalTestIds)));
+    }
+    if (playerIds.length > 0) {
+      statements.push(db.delete(schema.evaluationValues)
+        .where(inArray(schema.evaluationValues.playerId, playerIds)));
+    }
+    statements.push(db.delete(schema.evaluationSessions).where(eq(schema.evaluationSessions.teamId, teamId)));
+    statements.push(db.delete(schema.evaluationTests).where(eq(schema.evaluationTests.teamId, teamId)));
     statements.push(db.delete(schema.matches).where(eq(schema.matches.teamId, teamId)));
     statements.push(db.delete(schema.players).where(eq(schema.players.teamId, teamId)));
     statements.push(db.delete(schema.sessions).where(eq(schema.sessions.teamId, teamId)));

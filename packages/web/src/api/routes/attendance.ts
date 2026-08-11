@@ -148,7 +148,10 @@ export const attendanceRoutes = new Hono()
       }));
 
     if (toInsert.length > 0) {
-      await db.insert(schema.attendance).values(toInsert);
+      // onConflictDoNothing + unique(sessionId, playerId): si dos peticiones de
+      // init entran a la vez, la segunda no duplica filas ni revienta (F-0074).
+      await db.insert(schema.attendance).values(toInsert)
+        .onConflictDoNothing({ target: [schema.attendance.sessionId, schema.attendance.playerId] });
     }
 
     const sessionDate2 = session.date ? String(session.date).slice(0, 10) : undefined;

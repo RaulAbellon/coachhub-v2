@@ -14,8 +14,6 @@ import {
   categoryOf,
   computeStats,
   EVAL_CATEGORIES,
-  formatDateES,
-  formatDateShortES,
   parseValue,
   rankPlayers,
   type EvalSession,
@@ -23,6 +21,7 @@ import {
   type EvalValue,
   type EvalValueEnriched,
 } from "../lib/evaluations";
+import { formatDateES, formatDateShortES } from "../lib/dates";
 
 type Player = {
   id: number;

@@ -5,14 +5,7 @@ import { useAuth } from "../context/AuthContext";
 import { authFetch } from "../lib/authFetch";
 import Topbar from "../components/Topbar";
 import { Icon, PATHS } from "../components/icons";
-import { SESSION_TYPE_OPTIONS } from "../lib/sessionTypes";
-
-function hexToRgba(hex: string, alpha: number) {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r},${g},${b},${alpha})`;
-}
+import { SESSION_TYPE_OPTIONS, hexToRgba } from "../lib/sessionTypes";
 
 interface Session {
   id: number;

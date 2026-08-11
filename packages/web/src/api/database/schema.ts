@@ -247,7 +247,10 @@ export const attendance = sqliteTable("attendance", {
     .notNull()
     .$defaultFn(() => new Date()),
 }, (t) => ({
-  sessionPlayerIdx: index("attendance_session_player_idx").on(t.sessionId, t.playerId),
+  // Una jugadora solo puede tener un registro de asistencia por sesión. Antes
+  // era un índice normal: dos peticiones simultáneas podían crear duplicados
+  // (F-0074). Verificado que no había duplicados antes de aplicarlo.
+  sessionPlayerUnique: uniqueIndex("attendance_session_player_unique").on(t.sessionId, t.playerId),
   playerIdx: index("attendance_player_idx").on(t.playerId), // BE-033
 }));
 

@@ -8,6 +8,7 @@ import { authFetch } from "../lib/authFetch";
 import Topbar from "../components/Topbar";
 import { ADDITIONAL_COLOR } from "../lib/additional";
 import { AdditionalBadge } from "../components/AdditionalBadge";
+import { formatFullDateES } from "../lib/dates";
 
 interface Callup {
   playerId: number;
@@ -36,13 +37,6 @@ interface Match {
   goalsFor: number | null;
   goalsAgainst: number | null;
   notes: string;
-}
-
-function formatDateES(dateStr: string) {
-  const d = new Date(dateStr + "T12:00:00").toLocaleDateString("es-ES", {
-    weekday: "long", day: "numeric", month: "long", year: "numeric",
-  });
-  return d.charAt(0).toUpperCase() + d.slice(1);
 }
 
 export default function MatchPage({ id }: { id: string }) {
@@ -228,8 +222,7 @@ export default function MatchPage({ id }: { id: string }) {
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10.5);
     doc.setTextColor(70, 70, 70);
-    const capitalize = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
-    doc.text(capitalize(formatDateES(match.date)), margin, y); y += 16;
+    doc.text(formatFullDateES(match.date), margin, y); y += 16;
     const timeLine: string[] = [];
     if (match.time) timeLine.push(`Partido: ${match.time}h`);
     if (match.meetingTime) timeLine.push(`Citación: ${match.meetingTime}h`);
@@ -337,7 +330,7 @@ export default function MatchPage({ id }: { id: string }) {
           <h1 style={{ fontSize: 22, fontWeight: 800, color: "var(--text-primary)", marginBottom: 6, letterSpacing: "-0.01em" }}>
             {match.opponent || "Rival por definir"}
           </h1>
-          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 14 }}>{formatDateES(match.date)}</p>
+          <p style={{ fontSize: 13, color: "var(--text-secondary)", marginBottom: 14 }}>{formatFullDateES(match.date)}</p>
 
           <div style={{ display: "flex", gap: 20, flexWrap: "wrap", fontSize: 13, color: "var(--text-secondary)" }}>
             {match.time && <span style={{ display: "flex", alignItems: "center", gap: 6 }}><Clock size={14} /> Partido {match.time}h</span>}

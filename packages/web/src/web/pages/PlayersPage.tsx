@@ -12,9 +12,10 @@ import { AdditionalBadge } from "../components/AdditionalBadge";
 import { formatFieldValue, type FormField } from "../lib/formFields";
 import { generatePlayerPdf, type PlayerSummary } from "../lib/playerPdf";
 import {
-  categoryOf, computeTrend, trendColor, formatDateES, parseValue,
+  categoryOf, computeTrend, trendColor, parseValue,
   type EvalValueEnriched,
 } from "../lib/evaluations";
+import { formatDateES, formatDateNumeric } from "../lib/dates";
 
 const POSITIONS = [
   "Portera",
@@ -372,19 +373,22 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
     : null;
   const injuries: Injury[] = injuriesData?.injuries ?? [];
   const team = teamData?.team;
+  // F-0059: un viewer no debe ver botones de alta/edición/borrado. El backend ya
+  // los rechaza con 403, pero mostrarlos era engañoso.
+  const canEdit = team?.role === "owner" || team?.role === "editor";
 
   return (
     <>
       <Topbar
         crumbs={[{ label: "Equipos", href: "/teams" }, { label: team?.name || playerWord(team?.gender, true, true) }]}
-        actions={
+        actions={canEdit ? (
           <button
             className="btn-accent"
             onClick={() => { setEditPlayer(null); setForm(emptyPlayerForm()); setCustomForm({}); setSaveError(""); setShowAddPlayer(true); }}
           >
             <Icon d={PATHS.plus} size={14} color="#000" strokeWidth={2.2} /> {playerWord(team?.gender, false)}
           </button>
-        }
+        ) : undefined}
       />
     <div className="page-body">
       <p className="section-label" style={{ marginBottom: 14 }}>
@@ -403,7 +407,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
               </div>
               <h3 style={{ fontSize: 15, fontWeight: 600, marginBottom: 8 }}>Sin {playerWord(team?.gender, true)}</h3>
               <p style={{ color: "var(--text-secondary)", fontSize: 13, marginBottom: 20 }}>Añade {team?.gender === "masculino" ? "los" : "las"} {playerWord(team?.gender, true)} del equipo</p>
-              <button className="btn-accent" onClick={() => setShowAddPlayer(true)}>+ Añadir {playerWord(team?.gender, false)}</button>
+              {canEdit && <button className="btn-accent" onClick={() => setShowAddPlayer(true)}>+ Añadir {playerWord(team?.gender, false)}</button>}
             </div>
           ) : (
             <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
@@ -553,6 +557,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
             <div style={{ padding: "16px 20px 20px" }}>
               {panelView === "ficha" ? (
                 <FichaTab
+                  canEdit={canEdit}
                   player={selectedLive}
                   fields={enabledFields}
                   onEdit={() => openEdit(selectedLive)}
@@ -561,6 +566,7 @@ export default function PlayersPage({ params }: { params?: { teamId?: string } }
                 />
               ) : panelView === "lesiones" ? (
                 <LesionesTab
+                  canEdit={canEdit}
                   injuries={injuries}
                   onAdd={() => { setEditInjury(null); setInjuryForm(emptyInjuryForm()); setShowAddInjury(true); }}
                   onEdit={openEditInjury}
@@ -910,12 +916,6 @@ function calcAge(birthDate: string | null): string {
   return `${age} años`;
 }
 
-function formatDate(dateStr: string | null): string {
-  if (!dateStr) return "—";
-  const [y, m, d] = dateStr.split("-");
-  return `${d}/${m}/${y}`;
-}
-
 const HEALTH_COLORS: Record<string, string> = {
   enfermedades: "#22d3ee",
   lesiones: "#f97316",
@@ -932,9 +932,10 @@ function fieldValueOf(player: Player, f: FormField): string {
   return formatFieldValue({ type: f.type }, raw ?? "");
 }
 
-function FichaTab({ player, fields, onEdit, onDelete, onExportPdf }: {
+function FichaTab({ player, fields, canEdit, onEdit, onDelete, onExportPdf }: {
   player: Player;
   fields: FormField[];
+  canEdit: boolean;
   onEdit: () => void;
   onDelete: () => void;
   onExportPdf: () => void;
@@ -960,7 +961,7 @@ function FichaTab({ player, fields, onEdit, onDelete, onExportPdf }: {
         <div style={{ display: "flex", gap: 12, marginBottom: 16, padding: "10px 14px", borderRadius: 8, background: "var(--bg-secondary)" }}>
           <div>
             <div style={{ fontSize: 10, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.06em", marginBottom: 2 }}>{birth.label}</div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{formatDate(player.birthDate)}</div>
+            <div style={{ fontSize: 14, fontWeight: 600, color: "var(--text-primary)" }}>{formatDateNumeric(player.birthDate)}</div>
           </div>
           <div style={{ width: 1, background: "var(--border)" }} />
           <div>
@@ -1041,7 +1042,7 @@ function FichaTab({ player, fields, onEdit, onDelete, onExportPdf }: {
         Exportar ficha en PDF
       </button>
 
-      <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
+      {canEdit && <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
         <button className="btn-ghost" onClick={onEdit} style={{ flex: 1, fontSize: 12 }}>Editar ficha</button>
         {!confirmDelete ? (
           <button onClick={() => setConfirmDelete(true)}
@@ -1060,7 +1061,7 @@ function FichaTab({ player, fields, onEdit, onDelete, onExportPdf }: {
               }}>Sí, eliminar</button>
           </div>
         )}
-      </div>
+      </div>}
     </div>
   );
 }
@@ -1153,9 +1154,10 @@ function CustomFieldInput({ field, value, onChange }: {
 
 // ─── LESIONES TAB ─────────────────────────────────────────────────────────────
 function LesionesTab({
-  injuries, onAdd, onEdit, onResolve, onDelete, injuryDuration,
+  injuries, canEdit, onAdd, onEdit, onResolve, onDelete, injuryDuration,
 }: {
   injuries: Injury[];
+  canEdit: boolean;
   onAdd: () => void;
   onEdit: (i: Injury) => void;
   onResolve: (i: Injury) => void;
@@ -1169,7 +1171,7 @@ function LesionesTab({
     <div>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <span className="label-caps">Historial de lesiones</span>
-        <button className="btn-ghost" onClick={onAdd} style={{ padding: "3px 10px", fontSize: 11 }}>+ Nueva</button>
+        {canEdit && <button className="btn-ghost" onClick={onAdd} style={{ padding: "3px 10px", fontSize: 11 }}>+ Nueva</button>}
       </div>
 
       {injuries.length === 0 ? (
@@ -1182,13 +1184,13 @@ function LesionesTab({
           {active.length > 0 && (
             <>
               <p style={{ fontSize: 10, fontWeight: 700, color: "#ef4444", textTransform: "uppercase", letterSpacing: "0.07em", marginBottom: 8 }}>Activas</p>
-              {active.map(inj => <InjuryCard key={inj.id} inj={inj} onEdit={onEdit} onResolve={onResolve} onDelete={onDelete} duration={injuryDuration(inj)} />)}
+              {active.map(inj => <InjuryCard key={inj.id} inj={inj} canEdit={canEdit} onEdit={onEdit} onResolve={onResolve} onDelete={onDelete} duration={injuryDuration(inj)} />)}
             </>
           )}
           {resolved.length > 0 && (
             <>
               <p style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.07em", marginTop: 14, marginBottom: 8 }}>Resueltas</p>
-              {resolved.map(inj => <InjuryCard key={inj.id} inj={inj} onEdit={onEdit} onResolve={onResolve} onDelete={onDelete} duration={injuryDuration(inj)} />)}
+              {resolved.map(inj => <InjuryCard key={inj.id} inj={inj} canEdit={canEdit} onEdit={onEdit} onResolve={onResolve} onDelete={onDelete} duration={injuryDuration(inj)} />)}
             </>
           )}
         </>
@@ -1197,8 +1199,8 @@ function LesionesTab({
   );
 }
 
-function InjuryCard({ inj, onEdit, onResolve, onDelete, duration }: {
-  inj: Injury; onEdit: (i: Injury) => void; onResolve: (i: Injury) => void;
+function InjuryCard({ inj, canEdit, onEdit, onResolve, onDelete, duration }: {
+  inj: Injury; canEdit: boolean; onEdit: (i: Injury) => void; onResolve: (i: Injury) => void;
   onDelete: (id: number) => void; duration: string;
 }) {
   const [showDel, setShowDel] = useState(false);
@@ -1236,7 +1238,7 @@ function InjuryCard({ inj, onEdit, onResolve, onDelete, duration }: {
             </div>
           )}
         </div>
-        <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
+        {canEdit && <div style={{ display: "flex", flexDirection: "column", gap: 4, flexShrink: 0 }}>
           <button onClick={() => onEdit(inj)}
             style={{ fontSize: 10, padding: "3px 8px", background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer", color: "var(--text-secondary)" }}>
             Editar
@@ -1256,7 +1258,7 @@ function InjuryCard({ inj, onEdit, onResolve, onDelete, duration }: {
               <button onClick={() => onDelete(inj.id)} style={{ fontSize: 10, padding: "3px 6px", background: "#ef4444", border: "none", borderRadius: 6, cursor: "pointer", color: "#fff" }}>Sí</button>
             </div>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

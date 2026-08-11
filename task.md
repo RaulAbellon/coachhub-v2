@@ -585,3 +585,26 @@ de matches ya presente, null-check presente, los 8 índices FK ya existen).
 - Cascade: equipo con jugadora + prueba + jornada + valor → `DELETE` devuelve **200** y en
   la BD no queda ninguna fila huérfana de las 6 tablas comprobadas.
 - Datos de prueba eliminados: quedan **6 usuarios** y los equipos originales.
+
+## Fix: el modal de "Nueva prueba física" perdía el foco a cada tecla (11/08/2026)
+
+**Síntoma reportado:** al escribir la unidad de medida solo entraba una letra y el cursor
+saltaba al campo de encima ("Nombre de la prueba").
+
+**Causa:** `ModalShell` (EvaluationsPage) tenía `useEffect(…, [onClose])` y `onClose` se pasa
+como función inline (`() => { setShowTestModal(false); setEditTest(null); }`), así que cambiaba
+de identidad en **cada** render. Cada pulsación actualizaba `testForm` → nuevo render → el
+efecto se desmontaba y su cleanup ejecutaba `prevFocus?.focus?.()`. Y `prevFocus` se capturaba
+*dentro* del efecto, cuando el `autoFocus` del input "Nombre" ya había movido el foco ahí →
+el cursor volvía al campo Nombre y la siguiente letra se escribía en él.
+
+**Arreglo:** `onCloseRef` (ref actualizado en cada render) para que el efecto de teclado y
+trampa de foco tenga dependencias `[]` y se monte una sola vez. `prevFocus` pasa a capturarse
+durante el primer render (`openerRef`), que es cuando `document.activeElement` sigue siendo el
+botón que abrió el modal, así que al cerrar el foco vuelve donde debe.
+
+**Verificado con Playwright**, escribiendo tecla a tecla en los 3 inputs:
+- Antes del fix: `name='Salto verticalmon contramovimiento'`, `unit='c'`, `desc='C'`.
+- Después: `name='Salto vertical'`, `unit='cm'`, `desc='Con contramovimiento'`, y la prueba
+  se guarda con su unidad.
+- `tsc -b --force` limpio, 85/85 tests, `build` ok. Datos de prueba borrados de la BD.

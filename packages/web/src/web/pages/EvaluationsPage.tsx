@@ -1139,12 +1139,28 @@ function CloseButton({ onClick }: { onClick: () => void }) {
 function ModalShell({ children, onClose }: { children: React.ReactNode; onClose: () => void }) {
   const panelRef = useRef<HTMLDivElement | null>(null);
 
+  // `onClose` llega como función inline, así que cambia de identidad en cada
+  // render del padre. Se guarda en un ref para que el efecto de abajo pueda
+  // tener dependencias vacías: si dependiera de `onClose`, cada pulsación de
+  // tecla lo desmontaría y su cleanup devolvería el foco al campo anterior
+  // (por eso en "Nueva prueba física" solo se podía escribir una letra en
+  // "Unidad de medida" antes de saltar el cursor al campo "Nombre").
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  // Se captura durante el primer render, no dentro del efecto: al ejecutarse el
+  // efecto el `autoFocus` del primer input ya ha movido el foco dentro del
+  // modal, así que ahí `document.activeElement` ya no es quien lo abrió.
+  const openerRef = useRef<HTMLElement | null>(
+    typeof document === "undefined" ? null : (document.activeElement as HTMLElement | null),
+  );
+
   useEffect(() => {
-    const prevFocus = document.activeElement as HTMLElement | null;
+    const prevFocus = openerRef.current;
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
         e.stopPropagation();
-        onClose();
+        onCloseRef.current();
         return;
       }
       if (e.key !== "Tab" || !panelRef.current) return;
@@ -1168,7 +1184,7 @@ function ModalShell({ children, onClose }: { children: React.ReactNode; onClose:
       document.removeEventListener("keydown", onKeyDown);
       prevFocus?.focus?.();
     };
-  }, [onClose]);
+  }, []);
 
   return (
     <div

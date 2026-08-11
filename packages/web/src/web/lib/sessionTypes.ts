@@ -73,8 +73,3 @@ export function relativeTag(dateStr: string, today = new Date()) {
   if (dateStr === tomorrow) return "MAÑANA";
   return shortDate(dateStr);
 }
-
-/** Capitaliza solo la primera letra (es-ES: "Martes, 11 de agosto de 2026"). */
-export function capFirst(s: string) {
-  return s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
-}

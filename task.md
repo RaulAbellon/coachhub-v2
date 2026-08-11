@@ -549,6 +549,8 @@ diagnosticados o contradicen decisiones ya tomadas. Detalle abajo.
   Migrados `EvaluationsPage`, `PlayersPage`, `CalendarPage`, `MatchPage` y `SessionPage`;
   eliminadas 6 copias locales de formateadores de fecha. `TeamSessionsPage` deja de tener
   su propio `hexToRgba` (sin guard de hex inválido) y usa el de `lib/sessionTypes`.
+  Eliminado también `capFirst` de `lib/sessionTypes.ts`: quedó sin ningún uso al centralizar
+  el formateo de fechas (su capitalización vive ahora dentro de `lib/dates.ts`).
 
 ### Descartado por ser FALSO (ya estaba arreglado antes de esta ronda)
 S-02 (existe `team_members_team_user_unique`), S-03 (`authTokens.expiresAt` existe),

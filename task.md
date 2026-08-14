@@ -608,3 +608,64 @@ botón que abrió el modal, así que al cerrar el foco vuelve donde debe.
 - Después: `name='Salto vertical'`, `unit='cm'`, `desc='Con contramovimiento'`, y la prueba
   se guarda con su unidad.
 - `tsc -b --force` limpio, 85/85 tests, `build` ok. Datos de prueba borrados de la BD.
+
+## Fix: "Error de conexión" al iniciar sesión en el dominio publicado (14/08/2026)
+
+**Síntoma reportado:** varios usuarios (César, id 35) no podían entrar: al pulsar
+"Iniciar sesión" salía **"Error de conexión"**. En local y en la preview funcionaba bien.
+
+**Diagnóstico.** `POST /api/auth/login` en el dominio publicado devolvía
+`500 Internal Server Error` con cuerpo de **texto plano** (no JSON), de forma reproducible.
+Se descartó, con pruebas contra el live:
+- El deploy sirve el código más reciente (`{}` en el login → el 400 exacto del código actual).
+- La BD funciona: `POST /register` con username existente → 409 (ese endpoint hace el mismo
+  `SELECT` sobre `users` que el login), y un registro nuevo → 201 escribiendo en Turso.
+- bcrypt funciona (el registro hashea con coste 12 sin problema).
+- No es timeout ni caída del proceso: el 500 llega en 0,3-0,6 s y el resto de endpoints
+  responden bien inmediatamente antes y después.
+- Los logs no son accesibles: el deploy publicado no es este sandbox (pm2 queda vacío).
+
+**Prueba decisiva:** se registró un usuario temporal en el live y se probó a entrar.
+- Contraseña **correcta** → `200` con token. ✅
+- Contraseña **incorrecta** → `500` texto plano. ❌
+
+Es decir, solo se rompía la rama de fallo, la que responde **401**. Ampliando la prueba:
+
+| Petición | Deploy publicado | Local / preview |
+|---|---|---|
+| `GET /api/auth/me` sin token (401) | **401 JSON** ✅ | 401 ✅ |
+| `GET /api/teams` sin token (401) | **401 JSON** ✅ | 401 ✅ |
+| `POST /api/auth/login` credenciales malas (401) | **500 texto plano** ❌ | 401 ✅ |
+| `POST /api/auth/change-password` sin token (401) | **500 texto plano** ❌ | 401 ✅ |
+| `POST /api/sessions` sin token (401) | **500 texto plano** ❌ | 401 ✅ |
+| `PUT` / `DELETE /api/teams/1` sin token (401) | **500 texto plano** ❌ | 401 ✅ |
+| `POST` con respuesta 200 / 400 / 404 / 409 | correcto ✅ | correcto ✅ |
+
+**Causa raíz:** el proxy que hay delante de la app en el dominio publicado convierte
+**cualquier respuesta 401 de una petición no-GET** en un `500 Internal Server Error` de texto
+plano. No es código nuestro (el mismo commit y la misma BD dan 401 en local y en la preview) y
+`onError` de Hono nunca se ejecuta, porque el 500 no lo genera la app. Encaja con el
+comportamiento clásico de un proxy que interpreta el 401 como un desafío de autenticación e
+intenta reintentar la petición, con el cuerpo ya consumido.
+
+Efecto en el frontend: `LoginPage` hace `await res.json()` sobre `"Internal Server Error"`,
+eso lanza una excepción y el `catch` pinta **"Error de conexión"** en vez de
+"Credenciales incorrectas". Lo mismo pasaba con la sesión caducada en cualquier POST/PUT/DELETE.
+
+**Arreglo (`src/api/index.ts`):** middleware global que, tras ejecutar la ruta, si la respuesta
+es 401 y el método no es GET/HEAD, la reescribe a **400** (que el proxy sí respeta) manteniendo
+el mismo cuerpo JSON y añadiendo `unauthorized: true` y la cabecera `X-Auth-Status: 401`.
+En GET no se toca nada. No hacía falta cambiar el frontend: ni `LoginPage` ni `authFetchJson`
+discriminan por código, solo leen `body.error`, así que ahora se ve el mensaje real.
+
+**Extra:** `POST /api/auth/forgot-password` no tenía cuota. Cualquiera que conociese un email
+registrado podía inundar de correos a su dueño (de hecho durante el diagnóstico se envió un
+correo de recuperación no solicitado a la cuenta de Raúl). Ahora usa el mismo bucket AUTH
+(10 intentos / 15 min por IP) contando todos los intentos.
+
+**Verificado en local tras el fix:** login con contraseña mala → `400` +
+`{"error":"Credenciales incorrectas","unauthorized":true}` + `X-Auth-Status: 401`;
+`POST /api/teams` sin token → 400 con `unauthorized: true`; `GET /api/teams` y
+`GET /api/auth/me` siguen dando 401 JSON; login correcto → 200 con token; `/api/health` ok.
+`tsc -b --force` limpio, 85/85 tests, `build` ok, pm2 sin errores. Tokens de recuperación
+pendientes borrados y usuarios de sondeo eliminados de Turso (quedan los 8 legítimos).

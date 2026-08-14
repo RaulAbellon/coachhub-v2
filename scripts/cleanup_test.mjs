@@ -11,7 +11,7 @@ const env = Object.fromEntries(
 const db = createClient({ url: env.DATABASE_URL, authToken: env.DATABASE_AUTH_TOKEN });
 
 const users = await db.execute(
-  "SELECT id, username FROM users WHERE username GLOB 't[0-9]*' OR username GLOB 'ev[0-9]*' OR username GLOB 'vw[0-9]*' OR username GLOB 'rl_test_*' OR username GLOB 'rl_e2e_*'",
+  "SELECT id, username FROM users WHERE username GLOB 't[0-9]*' OR username GLOB 'ev[0-9]*' OR username GLOB 'vw[0-9]*' OR username GLOB 'rl_test_*' OR username GLOB 'rl_e2e_*' OR username GLOB 'live_probe_*' OR username GLOB 'fp_[0-9]*'",
 );
 console.log("usuarios de prueba:", users.rows.map(r => r.username));
 if (users.rows.length === 0) process.exit(0);

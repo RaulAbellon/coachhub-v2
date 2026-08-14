@@ -35,6 +35,43 @@ const app = new Hono()
       credentials: true,
     }),
   )
+  // ─── WORKAROUND DEL PROXY DEL DEPLOY PUBLICADO ──────────────────────────────
+  // Diagnosticado el 14/08/2026: en el dominio publicado (no en local ni en la
+  // preview), el proxy que hay delante de la app convierte CUALQUIER respuesta
+  // 401 de una petición NO-GET en un `500 Internal Server Error` con cuerpo de
+  // texto plano. Comprobado y reproducible con POST /api/auth/login (credenciales
+  // incorrectas), POST /api/auth/change-password, POST /api/sessions,
+  // PUT/DELETE /api/teams/:id. Los mismos endpoints devuelven 401 correctamente
+  // en local y en la preview, y en el deploy los 200/400/404/409 pasan bien: es
+  // el 401 en métodos con cuerpo lo que rompe.
+  //
+  // Efecto para el usuario: al fallar la contraseña, el frontend hacía
+  // `res.json()` sobre "Internal Server Error", petaba y mostraba "Error de
+  // conexión" en vez de "Credenciales incorrectas". Igual con la sesión caducada
+  // en cualquier POST/PUT/DELETE.
+  //
+  // Solución: se reescribe el 401 a 400 (que el proxy sí respeta) manteniendo
+  // exactamente el mismo cuerpo JSON y añadiendo `unauthorized: true` +
+  // cabecera `X-Auth-Status: 401` para que el cliente lo pueda distinguir.
+  // En GET no se toca nada, ahí el 401 funciona bien.
+  .use(async (c, next) => {
+    await next();
+    const method = c.req.method.toUpperCase();
+    if (c.res.status !== 401 || method === "GET" || method === "HEAD") return;
+
+    const original = (await c.res
+      .clone()
+      .json()
+      .catch(() => ({ error: "No autorizado" }))) as Record<string, unknown>;
+
+    c.res = new Response(JSON.stringify({ ...original, unauthorized: true }), {
+      status: 400,
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "X-Auth-Status": "401",
+      },
+    });
+  })
   .get("/health", (c) => c.json({ status: "ok" }, 200))
   .route("/auth", auth)
   .route("/teams", teams)

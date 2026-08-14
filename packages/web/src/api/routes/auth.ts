@@ -275,6 +275,14 @@ export const auth = new Hono()
     return c.json({ ok: true });
   })
   .post("/forgot-password", async (c) => {
+    // Sin cuota, cualquiera que conociese un email registrado podía inundar de
+    // correos de recuperación a su dueño. Cuenta cada intento (también los
+    // correctos), igual que en /register.
+    const ip = clientIp(c);
+    const quota = checkAuthRateLimit(ip);
+    if (!quota.allowed) return tooManyAttempts(c, quota.retryAfterMs);
+    recordAuthFailure(ip);
+
     const body = await c.req.json().catch(() => null);
     const email = body?.email ? String(body.email).trim().toLowerCase() : "";
     if (!email || !EMAIL_RE.test(email)) {

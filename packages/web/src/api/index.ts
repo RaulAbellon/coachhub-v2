@@ -45,32 +45,44 @@ const app = new Hono()
   // en local y en la preview, y en el deploy los 200/400/404/409 pasan bien: es
   // el 401 en métodos con cuerpo lo que rompe.
   //
+  // Ampliado el mismo día: el proxy hace lo propio con los **5xx** que genera la
+  // app. `POST /api/auth/forgot-password`, cuando el envío del correo falla,
+  // devuelve `502 {"error":"No se pudo enviar el correo..."}`; en el dominio
+  // publicado llega como `error code: 502` en texto plano (cuerpo de Cloudflare).
+  //
   // Efecto para el usuario: al fallar la contraseña, el frontend hacía
   // `res.json()` sobre "Internal Server Error", petaba y mostraba "Error de
   // conexión" en vez de "Credenciales incorrectas". Igual con la sesión caducada
-  // en cualquier POST/PUT/DELETE.
+  // en cualquier POST/PUT/DELETE, y con el error real al pedir el correo de
+  // recuperación.
   //
-  // Solución: se reescribe el 401 a 400 (que el proxy sí respeta) manteniendo
-  // exactamente el mismo cuerpo JSON y añadiendo `unauthorized: true` +
-  // cabecera `X-Auth-Status: 401` para que el cliente lo pueda distinguir.
-  // En GET no se toca nada, ahí el 401 funciona bien.
+  // Solución: se reescribe la respuesta a **400** (que el proxy sí respeta)
+  // manteniendo exactamente el mismo cuerpo JSON, con `unauthorized: true` +
+  // `X-Auth-Status: 401` en el caso del 401 y `X-App-Status: <código>` en los
+  // 5xx, para que el cliente pueda distinguirlos. En GET no se toca nada.
   .use(async (c, next) => {
     await next();
     const method = c.req.method.toUpperCase();
-    if (c.res.status !== 401 || method === "GET" || method === "HEAD") return;
+    const status = c.res.status;
+    const mangled = status === 401 || status >= 500;
+    if (!mangled || method === "GET" || method === "HEAD") return;
 
+    const fallback = status === 401 ? "No autorizado" : "Error interno del servidor";
     const original = (await c.res
       .clone()
       .json()
-      .catch(() => ({ error: "No autorizado" }))) as Record<string, unknown>;
+      .catch(() => ({ error: fallback }))) as Record<string, unknown>;
 
-    c.res = new Response(JSON.stringify({ ...original, unauthorized: true }), {
-      status: 400,
-      headers: {
-        "Content-Type": "application/json; charset=utf-8",
-        "X-Auth-Status": "401",
+    c.res = new Response(
+      JSON.stringify(status === 401 ? { ...original, unauthorized: true } : original),
+      {
+        status: 400,
+        headers: {
+          "Content-Type": "application/json; charset=utf-8",
+          ...(status === 401 ? { "X-Auth-Status": "401" } : { "X-App-Status": String(status) }),
+        },
       },
-    });
+    );
   })
   .get("/health", (c) => c.json({ status: "ok" }, 200))
   .route("/auth", auth)

@@ -669,3 +669,36 @@ correo de recuperación no solicitado a la cuenta de Raúl). Ahora usa el mismo 
 `GET /api/auth/me` siguen dando 401 JSON; login correcto → 200 con token; `/api/health` ok.
 `tsc -b --force` limpio, 85/85 tests, `build` ok, pm2 sin errores. Tokens de recuperación
 pendientes borrados y usuarios de sondeo eliminados de Turso (quedan los 8 legítimos).
+
+## Fix: "Error de conexión" al pedir el correo de recuperación (14/08/2026)
+
+**Síntoma:** César pulsaba "He olvidado mi contraseña" y salía "Error de conexión".
+
+**Causa raíz (la de verdad):** la cuenta de **Resend está en modo prueba**. El remitente es
+`onboarding@resend.dev` (sin dominio propio verificado) y en ese modo Resend **solo acepta
+enviar a la dirección del titular de la cuenta** (`01raul.emi@gmail.com`). Comprobado llamando
+directamente a la API de Resend:
+- a `01raul.emi@gmail.com` → `200`
+- a `pozolainezce@gmail.com` (César) → `403 validation_error`: *"You can only send testing
+  emails to your own email address (01raul.emi@gmail.com). To send emails to other recipients,
+  please verify a domain at resend.com/domains"*
+
+Consecuencia: **ningún usuario que no sea Raúl puede recibir el correo de recuperación**, ni el
+de bienvenida al registrarse (ese es no bloqueante y falla en silencio).
+
+**Segundo fallo, encadenado:** al fallar el envío, `/forgot-password` devuelve
+`502 {"error":"No se pudo enviar el correo. Inténtalo más tarde."}`. En el dominio publicado el
+proxy también se come los **5xx** de la app y los sustituye por `error code: 502` en texto
+plano (cuerpo de Cloudflare) → `res.json()` peta en el frontend → "Error de conexión" en vez
+del mensaje real. Mismo patrón que el 401 de ayer.
+
+**Arreglo (`src/api/index.ts`):** el middleware del workaround se amplía: además del 401,
+cualquier **5xx** de la app en una petición no-GET se reescribe a `400` conservando el cuerpo
+JSON y añadiendo `X-App-Status: <código original>`. Verificado en local: forgot-password a un
+email ajeno → `400` + `{"error":"No se pudo enviar el correo. Inténtalo más tarde."}` +
+`X-App-Status: 502`.
+
+**Pendiente (requiere acción del usuario):** para que la recuperación de contraseña funcione
+de verdad para los demás usuarios hay que verificar un dominio en resend.com/domains y cambiar
+`EMAIL_FROM` en `.env` a una dirección de ese dominio. Mientras tanto solo llegan correos a
+`01raul.emi@gmail.com`.

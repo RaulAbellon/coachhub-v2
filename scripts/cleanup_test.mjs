@@ -59,6 +59,8 @@ if (tids.length) {
   if (evids.length) {
     const s = evids.map(() => "?").join(",");
     console.log("evalvalues", await q(`DELETE FROM evaluation_values WHERE session_id IN (${s})`, evids));
+    // Enlaces jornada↔ejercicio: sin borrarlos antes salta la FK.
+    console.log("evalsessiontests", await q(`DELETE FROM evaluation_session_tests WHERE session_id IN (${s})`, evids));
   }
   console.log("evalsessions", await q(`DELETE FROM evaluation_sessions WHERE team_id IN (${ph})`, tids));
   console.log("evaltests", await q(`DELETE FROM evaluation_tests WHERE team_id IN (${ph})`, tids));

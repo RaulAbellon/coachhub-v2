@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useParams } from "wouter";
+import { useLocation, useParams } from "wouter";
 import { useAuth } from "../context/AuthContext";
 import { useIsMobile } from "../hooks/useIsMobile";
 import Topbar from "../components/Topbar";
@@ -16,6 +16,7 @@ import {
   EVAL_CATEGORIES,
   parseValue,
   rankPlayers,
+  sessionLabel,
   type EvalSession,
   type EvalTest,
   type EvalValue,
@@ -87,14 +88,32 @@ const emptyTestForm = () => ({
   lowerIsBetter: false,
 });
 
+/**
+ * Ejercicio que se va a crear: `scope` decide si queda en el catálogo del
+ * equipo (reutilizable, comparable entre jornadas) o solo en esta evaluación.
+ */
+type ExerciseDraft = ReturnType<typeof emptyTestForm> & { scope: "catalog" | "session" };
+
+const emptyExerciseDraft = (): ExerciseDraft => ({ ...emptyTestForm(), scope: "catalog" });
+
+/** Último equipo consultado en Valoraciones, para entrar directo desde la barra. */
+const LAST_TEAM_KEY = "coachhub:lastEvaluationsTeamId";
+
+function readLastTeamId(): number | null {
+  if (typeof localStorage === "undefined") return null;
+  const raw = Number(localStorage.getItem(LAST_TEAM_KEY));
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
+}
+
 export default function EvaluationsPage({ params }: { params?: { teamId?: string } }) {
   const routeParams = useParams<{ teamId: string }>();
-  const teamId = Number(params?.teamId || routeParams.teamId);
+  const routeTeamId = Number(params?.teamId || routeParams.teamId) || null;
   const { token } = useAuth();
   const qc = useQueryClient();
   const isMobile = useIsMobile();
+  const [, navigate] = useLocation();
 
-  const [view, setView] = useState<View>("tests");
+  const [view, setView] = useState<View>("record");
 
   const [showTestModal, setShowTestModal] = useState(false);
   const [editTest, setEditTest] = useState<EvalTest | null>(null);
@@ -102,12 +121,49 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
 
   const [showSessionModal, setShowSessionModal] = useState(false);
   const [sessionForm, setSessionForm] = useState({
+    title: "",
     date: new Date().toISOString().slice(0, 10),
     notes: "",
   });
+  // Ejercicios elegidos para la jornada que se está creando: los del catálogo
+  // por id y los nuevos, que no existen hasta que se guarda la jornada.
+  const [pickedTestIds, setPickedTestIds] = useState<number[]>([]);
+  const [draftExercises, setDraftExercises] = useState<ExerciseDraft[]>([]);
+  const [showExercisesModal, setShowExercisesModal] = useState(false);
+
+  // Registro en móvil: por ejercicio (una prueba, todo el equipo) o por jugador.
+  const [mobileMode, setMobileMode] = useState<"exercise" | "player">("exercise");
+  const [mobileTestId, setMobileTestId] = useState<number | null>(null);
 
   const [selectedSessionId, setSelectedSessionId] = useState<number | null>(null);
   const [compareTestId, setCompareTestId] = useState<number | null>(null);
+
+  // ─── Equipo activo ──────────────────────────────────────────────────────────
+  // Al entrar desde la barra de navegación no hay equipo en la URL: se usa el
+  // último consultado y, si no hay, el primero de la lista.
+  const [pickedTeamId, setPickedTeamId] = useState<number | null>(() => readLastTeamId());
+
+  const { data: teamsData } = useQuery({
+    queryKey: ["teams"],
+    queryFn: () => authFetchJson<{ teams: TeamInfo[] }>("/api/teams", {}, token),
+  });
+  const myTeams: TeamInfo[] = teamsData?.teams ?? [];
+
+  const teamId =
+    routeTeamId ??
+    (pickedTeamId && myTeams.some((t) => t.id === pickedTeamId)
+      ? pickedTeamId
+      : (myTeams[0]?.id ?? 0));
+
+  useEffect(() => {
+    if (teamId) localStorage.setItem(LAST_TEAM_KEY, String(teamId));
+  }, [teamId]);
+
+  function switchTeam(nextId: number) {
+    setPickedTeamId(nextId);
+    setSelectedSessionId(null);
+    if (routeTeamId) navigate(`/teams/${nextId}/evaluations`);
+  }
 
   // ─── Queries ────────────────────────────────────────────────────────────────
   const { data: teamData } = useQuery({
@@ -175,6 +231,24 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
   const selectedIdx = sessions.findIndex((s) => s.id === selectedSessionId);
   const currentSession = selectedIdx >= 0 ? sessions[selectedIdx] : null;
 
+  // Ejercicios de la jornada abierta: son estos, no todo el catálogo, los que
+  // se registran y los que se cuentan para el estado de cada jugador.
+  const sessionTests: EvalTest[] = currentSession?.tests ?? [];
+  const sessionTestIds = new Set(sessionTests.map((t) => t.id));
+  // Del catálogo, los que aún no están en la jornada (para el botón "Añadir").
+  const availableTests = tests.filter((t) => !sessionTestIds.has(t.id));
+
+  useEffect(() => {
+    if (sessionTests.length === 0) {
+      setMobileTestId(null);
+      return;
+    }
+    if (!sessionTests.some((t) => t.id === mobileTestId)) setMobileTestId(sessionTests[0].id);
+  }, [sessionTests, mobileTestId]);
+
+  // Ejercicio abierto en el modo "por ejercicio" del móvil.
+  const mobileTest = sessionTests.find((t) => t.id === mobileTestId) ?? sessionTests[0] ?? null;
+
   const { data: valuesData } = useQuery({
     queryKey: ["eval-values", currentSession?.id],
     queryFn: () =>
@@ -191,7 +265,7 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
   const { data: historyData } = useQuery({
     queryKey: ["eval-history", teamId],
     queryFn: () =>
-      authFetchJson<{ sessions: EvalSession[]; values: EvalValueEnriched[] }>(
+      authFetchJson<{ sessions: EvalSession[]; values: EvalValueEnriched[]; tests: EvalTest[] }>(
         `/api/evaluations/history?teamId=${teamId}`,
         {},
         token,
@@ -299,7 +373,7 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
   }
 
   function isPlayerRegistered(playerId: number): boolean {
-    return tests.some((t) => valueFor(playerId, t.id).trim() !== "");
+    return sessionTests.some((t) => valueFor(playerId, t.id).trim() !== "");
   }
 
   // ─── Mutations ──────────────────────────────────────────────────────────────
@@ -333,25 +407,112 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
     },
   });
 
+  /** Crea un ejercicio; `sessionId` lo hace puntual, `attachToSession` lo añade. */
+  async function postExercise(
+    draft: ExerciseDraft,
+    sessionId: number,
+  ): Promise<Response> {
+    const { scope, ...fields } = draft;
+    return authFetch(
+      "/api/evaluations/tests",
+      {
+        method: "POST",
+        body: JSON.stringify({
+          teamId,
+          ...fields,
+          ...(scope === "session" ? { sessionId } : { attachToSession: sessionId }),
+        }),
+      },
+      token,
+    );
+  }
+
   const createSession = useMutation({
-    mutationFn: async (data: { date: string; notes: string }) => {
+    mutationFn: async (data: {
+      title: string;
+      date: string;
+      notes: string;
+      testIds: number[];
+      drafts: ExerciseDraft[];
+    }) => {
+      const { drafts: newExercises, ...session } = data;
       const res = await authFetch(
         "/api/evaluations/sessions",
-        { method: "POST", body: JSON.stringify({ teamId, ...data }) },
+        { method: "POST", body: JSON.stringify({ teamId, ...session }) },
         token,
       );
       if (!res.ok) throw new Error("No se pudo crear la evaluación");
-      return res.json();
+      const created = await res.json();
+      const sessionId = created?.session?.id;
+      // Los ejercicios nuevos se crean después: necesitan el id de la jornada.
+      if (sessionId) {
+        for (const draft of newExercises) {
+          if (!draft.name.trim()) continue;
+          await postExercise(draft, sessionId);
+        }
+      }
+      return created;
     },
     onSuccess: async (res) => {
       setShowSessionModal(false);
+      setPickedTestIds([]);
+      setDraftExercises([]);
       setView("record");
       // Se espera al refetch: si no, el efecto que valida la jornada
       // seleccionada aún no ve la nueva y vuelve a la anterior (y los valores
       // acabarían escritos en la jornada equivocada).
       await qc.invalidateQueries({ queryKey: ["eval-sessions", teamId] });
+      qc.invalidateQueries({ queryKey: ["eval-tests", teamId] });
       qc.invalidateQueries({ queryKey: ["eval-history", teamId] });
       if (res?.session?.id) setSelectedSessionId(res.session.id);
+    },
+  });
+
+  // ─── Ejercicios de una jornada ya creada ───────────────────────────────────
+  const addTestToSession = useMutation({
+    mutationFn: async (testId: number) => {
+      const res = await authFetch(
+        `/api/evaluations/sessions/${currentSession!.id}/tests`,
+        { method: "POST", body: JSON.stringify({ testId }) },
+        token,
+      );
+      if (!res.ok) throw new Error("No se pudo añadir el ejercicio");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["eval-sessions", teamId] });
+      qc.invalidateQueries({ queryKey: ["eval-history", teamId] });
+    },
+  });
+
+  const createTestInSession = useMutation({
+    mutationFn: async (draft: ExerciseDraft) => {
+      const res = await postExercise(draft, currentSession!.id);
+      if (!res.ok) throw new Error("No se pudo crear el ejercicio");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["eval-sessions", teamId] });
+      qc.invalidateQueries({ queryKey: ["eval-tests", teamId] });
+      qc.invalidateQueries({ queryKey: ["eval-history", teamId] });
+    },
+  });
+
+  const removeTestFromSession = useMutation({
+    mutationFn: async (testId: number) => {
+      const res = await authFetch(
+        `/api/evaluations/sessions/${currentSession!.id}/tests/${testId}`,
+        { method: "DELETE" },
+        token,
+      );
+      if (!res.ok) throw new Error("No se pudo quitar el ejercicio");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["eval-sessions", teamId] });
+      qc.invalidateQueries({ queryKey: ["eval-values", currentSession?.id] });
+      qc.invalidateQueries({ queryKey: ["eval-tests", teamId] });
+      qc.invalidateQueries({ queryKey: ["eval-history", teamId] });
     },
   });
 
@@ -386,7 +547,11 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
   }
 
   function openNewSession() {
-    setSessionForm({ date: new Date().toISOString().slice(0, 10), notes: "" });
+    setSessionForm({ title: "", date: new Date().toISOString().slice(0, 10), notes: "" });
+    // Por defecto entran todos los ejercicios del catálogo; se desmarcan los
+    // que no toquen ese día.
+    setPickedTestIds(tests.map((t) => t.id));
+    setDraftExercises([]);
     setShowSessionModal(true);
   }
 
@@ -398,7 +563,8 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
         number: p.number,
         isAdditional: p.isAdditional,
       })),
-      tests,
+      // Incluye los ejercicios puntuales de cada jornada, no solo el catálogo.
+      tests: historyData?.tests ?? tests,
       sessions: historyData?.sessions ?? sessions,
       values: historyData?.values ?? [],
     });
@@ -492,6 +658,30 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
       />
 
       <div className="page-body">
+        {myTeams.length > 1 && (
+          <div style={{ marginBottom: 16 }}>
+            <span className="section-label">Equipo</span>
+            <select
+              aria-label="Equipo"
+              value={teamId || ""}
+              onChange={(e) => switchTeam(Number(e.target.value))}
+              style={{ width: isMobile ? "100%" : 300, fontWeight: 600, marginTop: 6 }}
+            >
+              {myTeams.map((t) => (
+                <option key={t.id} value={t.id}>
+                  {t.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {teamsData && myTeams.length === 0 && (
+          <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
+            Todavía no tienes equipos. Crea uno en «Equipos» para empezar a valorar.
+          </p>
+        )}
+
         {isMobile && (
           <div style={{ display: "flex", gap: 6, marginBottom: 16, overflowX: "auto" }}>
             {(Object.keys(VIEW_LABELS) as View[]).map((v) => (
@@ -672,34 +862,58 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
             >
               {sessions.length > 0 ? (
                 <>
-                  <button
-                    className="btn-ghost"
-                    style={{ padding: "5px 10px", fontSize: 12 }}
-                    disabled={selectedIdx >= sessions.length - 1}
-                    onClick={() => setSelectedSessionId(sessions[selectedIdx + 1]?.id ?? null)}
+                  {/* Flechas y selector van juntos: en móvil el `flexWrap` del
+                      contenedor los separaba a distintas líneas. */}
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      width: isMobile ? "100%" : "auto",
+                    }}
                   >
-                    ←
-                  </button>
-                  <select
-                    value={selectedSessionId ?? ""}
-                    onChange={(e) => setSelectedSessionId(Number(e.target.value))}
-                    style={{ width: "auto", minWidth: 220, fontWeight: 600 }}
-                  >
-                    {sessions.map((s) => (
-                      <option key={s.id} value={s.id}>
-                        {formatDateES(s.date)}
-                        {s.notes ? ` · ${s.notes}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  <button
-                    className="btn-ghost"
-                    style={{ padding: "5px 10px", fontSize: 12 }}
-                    disabled={selectedIdx <= 0}
-                    onClick={() => setSelectedSessionId(sessions[selectedIdx - 1]?.id ?? null)}
-                  >
-                    →
-                  </button>
+                    <button
+                      className="btn-ghost"
+                      style={{ padding: "5px 10px", fontSize: 12, flexShrink: 0 }}
+                      disabled={selectedIdx >= sessions.length - 1}
+                      onClick={() => setSelectedSessionId(sessions[selectedIdx + 1]?.id ?? null)}
+                    >
+                      ←
+                    </button>
+                    <select
+                      aria-label="Evaluación"
+                      value={selectedSessionId ?? ""}
+                      onChange={(e) => setSelectedSessionId(Number(e.target.value))}
+                      style={{
+                        width: isMobile ? "100%" : "auto",
+                        minWidth: isMobile ? 0 : 220,
+                        fontWeight: 600,
+                      }}
+                    >
+                      {sessions.map((s) => (
+                        <option key={s.id} value={s.id}>
+                          {sessionLabel(s, formatDateES)}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      className="btn-ghost"
+                      style={{ padding: "5px 10px", fontSize: 12, flexShrink: 0 }}
+                      disabled={selectedIdx <= 0}
+                      onClick={() => setSelectedSessionId(sessions[selectedIdx - 1]?.id ?? null)}
+                    >
+                      →
+                    </button>
+                  </div>
+                  {currentSession && (
+                    <button
+                      className="btn-ghost"
+                      style={{ padding: "5px 10px", fontSize: 12 }}
+                      onClick={() => setShowExercisesModal(true)}
+                    >
+                      Ejercicios ({sessionTests.length})
+                    </button>
+                  )}
                   <span style={{ fontSize: 12, color: "var(--text-muted)" }}>
                     {registeredCount} de {players.length} {pw(true)}
                   </span>
@@ -736,28 +950,31 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
               )}
             </div>
 
-            {currentSession && tests.length === 0 && (
+            {currentSession && sessionTests.length === 0 && (
               <div style={{ textAlign: "center", padding: "40px 0" }}>
                 <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
-                  Primero configura las pruebas físicas en la pestaña «Pruebas».
+                  Esta evaluación todavía no tiene ejercicios.
                 </p>
-                <button
-                  className="btn-ghost"
-                  onClick={() => setView("tests")}
-                  style={{ marginTop: 12 }}
-                >
-                  Ir a Pruebas
-                </button>
+                {canEdit && (
+                  <button
+                    className="btn-accent"
+                    onClick={() => setShowExercisesModal(true)}
+                    style={{ marginTop: 12 }}
+                  >
+                    <Icon d={PATHS.plus} size={14} color="#000" strokeWidth={2.2} /> Añadir
+                    ejercicios
+                  </button>
+                )}
               </div>
             )}
 
-            {currentSession && tests.length > 0 && players.length === 0 && (
+            {currentSession && sessionTests.length > 0 && players.length === 0 && (
               <p style={{ color: "var(--text-muted)", fontSize: 13 }}>
                 Este equipo aún no tiene {pw(true)}.
               </p>
             )}
 
-            {currentSession && tests.length > 0 && players.length > 0 && !isMobile && (
+            {currentSession && sessionTests.length > 0 && players.length > 0 && !isMobile && (
               <div
                 style={{
                   background: "var(--bg-card)",
@@ -770,7 +987,7 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
                   <thead>
                     <tr>
                       <th style={thStyle}>{pw(true, true)}</th>
-                      {tests.map((t) => (
+                      {sessionTests.map((t) => (
                         <th key={t.id} style={thStyle}>
                           {t.name}
                           {t.unit && (
@@ -808,7 +1025,7 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
                             </span>
                           )}
                         </td>
-                        {tests.map((t) => (
+                        {sessionTests.map((t) => (
                           <td key={t.id} style={tdStyle}>
                             <input
                               style={{ width: 90, textAlign: "center", padding: "6px 8px" }}
@@ -835,76 +1052,174 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
               </div>
             )}
 
-            {currentSession && tests.length > 0 && players.length > 0 && isMobile && (
-              <div style={{ display: "grid", gap: 8 }}>
-                {players.map((p) => (
-                  <div
-                    key={p.id}
-                    style={{
-                      background: "var(--bg-card)",
-                      border: "1px solid var(--border)",
-                      borderRadius: 12,
-                      padding: 14,
-                    }}
-                  >
-                    <div
+            {currentSession && sessionTests.length > 0 && players.length > 0 && isMobile && (
+              <>
+                {/* En el móvil se registra de dos maneras: recorriendo el equipo
+                    con un ejercicio (lo habitual en pista) o rellenando todos
+                    los ejercicios de un jugador. */}
+                <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                  {(
+                    [
+                      ["exercise", "Por ejercicio"],
+                      ["player", `Por ${pw(false)}`],
+                    ] as const
+                  ).map(([m, label]) => (
+                    <button
+                      key={m}
+                      onClick={() => setMobileMode(m)}
                       style={{
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: 8,
-                        marginBottom: 10,
+                        flex: 1,
+                        padding: "8px 12px",
+                        fontSize: 12,
+                        fontWeight: 600,
+                        border: `1px solid ${mobileMode === m ? "var(--accent)" : "var(--border)"}`,
+                        borderRadius: 20,
+                        cursor: "pointer",
+                        background: mobileMode === m ? "var(--accent-dim)" : "transparent",
+                        color: mobileMode === m ? "var(--accent)" : "var(--text-secondary)",
                       }}
                     >
-                      <span
-                        style={{
-                          fontWeight: 600,
-                          fontSize: 14,
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 6,
-                          minWidth: 0,
-                        }}
-                      >
-                        {p.number != null ? `#${p.number} ` : ""}
-                        {p.name}
-                        {p.isAdditional && <AdditionalBadge compact />}
-                      </span>
-                      <StatusBadge registered={isPlayerRegistered(p.id)} />
-                    </div>
-                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-                      {tests.map((t) => (
-                        <div key={t.id}>
+                      {label}
+                    </button>
+                  ))}
+                </div>
+
+                {mobileMode === "exercise" ? (
+                  <>
+                    <select
+                      aria-label="Ejercicio"
+                      value={mobileTestId ?? ""}
+                      onChange={(e) => setMobileTestId(Number(e.target.value))}
+                      style={{ width: "100%", fontWeight: 600 }}
+                    >
+                      {sessionTests.map((t) => (
+                        <option key={t.id} value={t.id}>
+                          {t.name}
+                          {t.unit ? ` (${t.unit})` : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {mobileTest && (
+                      <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+                        {players.map((p) => (
                           <div
+                            key={p.id}
                             style={{
-                              fontSize: 10,
-                              fontWeight: 600,
-                              color: "var(--text-muted)",
-                              textTransform: "uppercase",
-                              marginBottom: 4,
+                              background: "var(--bg-card)",
+                              border: "1px solid var(--border)",
+                              borderRadius: 12,
+                              padding: "10px 14px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              gap: 10,
                             }}
                           >
-                            {t.name}
-                            {t.unit ? ` (${t.unit})` : ""}
+                            <span
+                              style={{
+                                fontWeight: 600,
+                                fontSize: 14,
+                                display: "flex",
+                                alignItems: "center",
+                                gap: 6,
+                                minWidth: 0,
+                              }}
+                            >
+                              {p.number != null ? `#${p.number} ` : ""}
+                              {p.name}
+                              {p.isAdditional && <AdditionalBadge compact />}
+                            </span>
+                            <input
+                              type="text"
+                              inputMode="decimal"
+                              placeholder="—"
+                              aria-label={`${mobileTest.name} · ${p.name}`}
+                              disabled={!canEdit}
+                              value={valueFor(p.id, mobileTest.id)}
+                              onChange={(e) => onCellChange(p.id, mobileTest.id, e.target.value)}
+                              onBlur={() => {
+                                if (timerRef.current) clearTimeout(timerRef.current);
+                                flushPending();
+                              }}
+                              style={{ width: 96, textAlign: "center", flexShrink: 0 }}
+                            />
                           </div>
-                          <input
-                            type="text"
-                            inputMode="decimal"
-                            placeholder="—"
-                            disabled={!canEdit}
-                            value={valueFor(p.id, t.id)}
-                            onChange={(e) => onCellChange(p.id, t.id, e.target.value)}
-                            onBlur={() => {
-                              if (timerRef.current) clearTimeout(timerRef.current);
-                              flushPending();
+                        ))}
+                      </div>
+                    )}
+                  </>
+                ) : (
+                  <div style={{ display: "grid", gap: 8 }}>
+                    {players.map((p) => (
+                      <div
+                        key={p.id}
+                        style={{
+                          background: "var(--bg-card)",
+                          border: "1px solid var(--border)",
+                          borderRadius: 12,
+                          padding: 14,
+                        }}
+                      >
+                        <div
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: 8,
+                            marginBottom: 10,
+                          }}
+                        >
+                          <span
+                            style={{
+                              fontWeight: 600,
+                              fontSize: 14,
+                              display: "flex",
+                              alignItems: "center",
+                              gap: 6,
+                              minWidth: 0,
                             }}
-                          />
+                          >
+                            {p.number != null ? `#${p.number} ` : ""}
+                            {p.name}
+                            {p.isAdditional && <AdditionalBadge compact />}
+                          </span>
+                          <StatusBadge registered={isPlayerRegistered(p.id)} />
                         </div>
-                      ))}
-                    </div>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                          {sessionTests.map((t) => (
+                            <div key={t.id}>
+                              <div
+                                style={{
+                                  fontSize: 10,
+                                  fontWeight: 600,
+                                  color: "var(--text-muted)",
+                                  textTransform: "uppercase",
+                                  marginBottom: 4,
+                                }}
+                              >
+                                {t.name}
+                                {t.unit ? ` (${t.unit})` : ""}
+                              </div>
+                              <input
+                                type="text"
+                                inputMode="decimal"
+                                placeholder="—"
+                                disabled={!canEdit}
+                                value={valueFor(p.id, t.id)}
+                                onChange={(e) => onCellChange(p.id, t.id, e.target.value)}
+                                onBlur={() => {
+                                  if (timerRef.current) clearTimeout(timerRef.current);
+                                  flushPending();
+                                }}
+                              />
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                ))}
-              </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -1060,6 +1375,14 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
             <CloseButton onClick={() => setShowSessionModal(false)} />
           </div>
 
+          <label style={labelStyle}>Título</label>
+          <input
+            placeholder="Ej: Test inicial pretemporada"
+            value={sessionForm.title}
+            onChange={(e) => setSessionForm((f) => ({ ...f, title: e.target.value }))}
+            autoFocus
+          />
+
           <label style={labelStyle}>Fecha *</label>
           <input
             type="date"
@@ -1069,9 +1392,110 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
 
           <label style={labelStyle}>Notas (opcional)</label>
           <input
-            placeholder="Ej: test inicial de pretemporada"
+            placeholder="Ej: se hizo en pista cubierta"
             value={sessionForm.notes}
             onChange={(e) => setSessionForm((f) => ({ ...f, notes: e.target.value }))}
+          />
+
+          <label style={labelStyle}>Ejercicios de esta evaluación</label>
+          {tests.length === 0 ? (
+            <p style={{ fontSize: 12, color: "var(--text-muted)" }}>
+              Aún no hay ejercicios en el catálogo del equipo. Crea aquí abajo los que necesites.
+            </p>
+          ) : (
+            <div style={{ display: "grid", gap: 6 }}>
+              {tests.map((t) => {
+                const checked = pickedTestIds.includes(t.id);
+                return (
+                  <label
+                    key={t.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      cursor: "pointer",
+                      fontSize: 13,
+                      border: `1px solid ${checked ? "var(--accent)" : "var(--border)"}`,
+                      background: checked ? "var(--accent-dim)" : "transparent",
+                      color: checked ? "var(--text-primary)" : "var(--text-secondary)",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      style={{ width: 16, height: 16, margin: 0 }}
+                      onChange={(e) =>
+                        setPickedTestIds((ids) =>
+                          e.target.checked ? [...ids, t.id] : ids.filter((id) => id !== t.id),
+                        )
+                      }
+                    />
+                    <span style={{ fontWeight: 600 }}>{t.name}</span>
+                    {t.unit && (
+                      <span style={{ color: "var(--text-muted)", fontSize: 12 }}>({t.unit})</span>
+                    )}
+                    <span
+                      style={{
+                        marginLeft: "auto",
+                        fontSize: 10,
+                        fontWeight: 700,
+                        color: categoryOf(t.category).color,
+                      }}
+                    >
+                      {categoryOf(t.category).label}
+                    </span>
+                  </label>
+                );
+              })}
+            </div>
+          )}
+
+          {draftExercises.length > 0 && (
+            <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginTop: 10 }}>
+              {draftExercises.map((d, i) => (
+                <span
+                  key={`${d.name}-${i}`}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: 6,
+                    padding: "5px 8px",
+                    borderRadius: 20,
+                    fontSize: 12,
+                    fontWeight: 600,
+                    background: "var(--bg-surface)",
+                    border: "1px solid var(--border)",
+                  }}
+                >
+                  {d.name}
+                  {d.unit ? ` (${d.unit})` : ""}
+                  <span style={{ color: "var(--text-muted)", fontWeight: 500 }}>
+                    {d.scope === "session" ? "solo aquí" : "catálogo"}
+                  </span>
+                  <button
+                    aria-label={`Quitar ${d.name}`}
+                    onClick={() => setDraftExercises((list) => list.filter((_, j) => j !== i))}
+                    style={{
+                      background: "none",
+                      border: "none",
+                      color: "var(--danger)",
+                      cursor: "pointer",
+                      fontSize: 13,
+                      padding: 0,
+                    }}
+                  >
+                    ✕
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+
+          <ExerciseDraftForm
+            onAdd={(draft) => setDraftExercises((list) => [...list, draft])}
+            addLabel="Añadir ejercicio"
           />
 
           <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
@@ -1081,14 +1505,311 @@ export default function EvaluationsPage({ params }: { params?: { teamId?: string
             <button
               className="btn-accent"
               disabled={!sessionForm.date || createSession.isPending}
-              onClick={() => createSession.mutate(sessionForm)}
+              onClick={() =>
+                createSession.mutate({
+                  ...sessionForm,
+                  testIds: pickedTestIds,
+                  drafts: draftExercises,
+                })
+              }
             >
               Crear evaluación
             </button>
           </div>
         </ModalShell>
       )}
+
+      {/* ═══════════════ MODAL: ejercicios de la evaluación ═══════════════ */}
+      {showExercisesModal && currentSession && (
+        <ModalShell onClose={() => setShowExercisesModal(false)}>
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "center",
+              marginBottom: 8,
+            }}
+          >
+            <div>
+              <h2 style={{ fontSize: 17, fontWeight: 700 }}>Ejercicios de la evaluación</h2>
+              <p style={{ fontSize: 12, color: "var(--text-secondary)", marginTop: 4 }}>
+                {sessionLabel(currentSession, formatDateES)}
+              </p>
+            </div>
+            <CloseButton onClick={() => setShowExercisesModal(false)} />
+          </div>
+
+          <label style={labelStyle}>En esta evaluación ({sessionTests.length})</label>
+          {sessionTests.length === 0 ? (
+            <p style={{ fontSize: 12, color: "var(--text-muted)" }}>Todavía no hay ejercicios.</p>
+          ) : (
+            <div style={{ display: "grid", gap: 6 }}>
+              {sessionTests.map((t) => (
+                <div
+                  key={t.id}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    padding: "8px 10px",
+                    borderRadius: 8,
+                    border: "1px solid var(--border)",
+                    fontSize: 13,
+                  }}
+                >
+                  <span style={{ fontWeight: 600, minWidth: 0 }}>
+                    {t.name}
+                    {t.unit ? ` (${t.unit})` : ""}
+                  </span>
+                  {t.sessionId != null && (
+                    <span style={{ fontSize: 10, fontWeight: 700, color: "var(--text-muted)" }}>
+                      SOLO AQUÍ
+                    </span>
+                  )}
+                  {canEdit && (
+                    <button
+                      className="btn-ghost"
+                      style={{
+                        marginLeft: "auto",
+                        padding: "4px 10px",
+                        fontSize: 12,
+                        color: "var(--danger)",
+                      }}
+                      disabled={removeTestFromSession.isPending}
+                      onClick={() => {
+                        if (
+                          confirm(
+                            `¿Quitar "${t.name}" de esta evaluación? Se borrarán los valores registrados en esta jornada para ese ejercicio.`,
+                          )
+                        ) {
+                          removeTestFromSession.mutate(t.id);
+                        }
+                      }}
+                    >
+                      Quitar
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {canEdit && availableTests.length > 0 && (
+            <>
+              <label style={labelStyle}>Del catálogo del equipo</label>
+              <div style={{ display: "grid", gap: 6 }}>
+                {availableTests.map((t) => (
+                  <div
+                    key={t.id}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      padding: "8px 10px",
+                      borderRadius: 8,
+                      border: "1px solid var(--border)",
+                      fontSize: 13,
+                      color: "var(--text-secondary)",
+                    }}
+                  >
+                    <span style={{ fontWeight: 600, minWidth: 0 }}>
+                      {t.name}
+                      {t.unit ? ` (${t.unit})` : ""}
+                    </span>
+                    <button
+                      className="btn-ghost"
+                      style={{ marginLeft: "auto", padding: "4px 10px", fontSize: 12 }}
+                      disabled={addTestToSession.isPending}
+                      onClick={() => addTestToSession.mutate(t.id)}
+                    >
+                      Añadir
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+
+          {canEdit && (
+            <ExerciseDraftForm
+              onAdd={(draft) => createTestInSession.mutate(draft)}
+              addLabel="Crear y añadir"
+              busy={createTestInSession.isPending}
+            />
+          )}
+
+          <div style={{ display: "flex", gap: 10, marginTop: 24, justifyContent: "flex-end" }}>
+            <button className="btn-accent" onClick={() => setShowExercisesModal(false)}>
+              Listo
+            </button>
+          </div>
+        </ModalShell>
+      )}
     </>
+  );
+}
+
+/**
+ * Formulario compacto para definir un ejercicio. Se usa al crear la evaluación
+ * (los ejercicios se guardan al confirmarla) y dentro de una jornada ya creada
+ * (se crean al instante).
+ */
+function ExerciseDraftForm({
+  onAdd,
+  addLabel,
+  busy,
+}: {
+  onAdd: (draft: ExerciseDraft) => void;
+  addLabel: string;
+  busy?: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const [draft, setDraft] = useState<ExerciseDraft>(emptyExerciseDraft);
+
+  if (!open) {
+    return (
+      <button
+        className="btn-ghost"
+        style={{ marginTop: 14, fontSize: 12 }}
+        onClick={() => setOpen(true)}
+      >
+        <Icon d={PATHS.plus} size={13} strokeWidth={2.2} /> Nuevo ejercicio
+      </button>
+    );
+  }
+
+  return (
+    <div
+      style={{
+        marginTop: 14,
+        padding: 14,
+        borderRadius: 12,
+        border: "1px solid var(--border)",
+        background: "var(--bg-surface)",
+      }}
+    >
+      <label style={{ ...labelStyle, marginTop: 0 }}>Nombre del ejercicio *</label>
+      <input
+        placeholder="Ej: Velocidad 20 m"
+        value={draft.name}
+        onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))}
+        autoFocus
+      />
+
+      <label style={labelStyle}>Unidad</label>
+      <input
+        placeholder="Ej: seg, cm, kg, km/h"
+        value={draft.unit}
+        onChange={(e) => setDraft((d) => ({ ...d, unit: e.target.value }))}
+      />
+
+      <label style={labelStyle}>Categoría</label>
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {CATEGORY_LIST.map(([key, cat]) => (
+          <button
+            key={key}
+            onClick={() => setDraft((d) => ({ ...d, category: key }))}
+            style={{
+              padding: "5px 10px",
+              borderRadius: 8,
+              fontSize: 11,
+              fontWeight: 600,
+              border: `1px solid ${cat.color}44`,
+              background: draft.category === key ? `${cat.color}22` : "transparent",
+              color: cat.color,
+              cursor: "pointer",
+            }}
+          >
+            {cat.label}
+          </button>
+        ))}
+      </div>
+
+      <label style={labelStyle}>Dirección de mejora</label>
+      <div style={{ display: "flex", gap: 6 }}>
+        {[
+          { v: false, label: "Mayor es mejor" },
+          { v: true, label: "Menor es mejor" },
+        ].map((o) => (
+          <button
+            key={String(o.v)}
+            onClick={() => setDraft((d) => ({ ...d, lowerIsBetter: o.v }))}
+            style={{
+              flex: 1,
+              padding: "8px 10px",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 600,
+              cursor: "pointer",
+              border: `1px solid ${draft.lowerIsBetter === o.v ? "var(--accent)" : "var(--border)"}`,
+              background: draft.lowerIsBetter === o.v ? "var(--accent-dim)" : "transparent",
+              color: draft.lowerIsBetter === o.v ? "var(--accent)" : "var(--text-secondary)",
+            }}
+          >
+            {o.label}
+          </button>
+        ))}
+      </div>
+
+      <label style={labelStyle}>¿Se guarda en el catálogo?</label>
+      <div style={{ display: "flex", gap: 6 }}>
+        {(
+          [
+            { v: "catalog", label: "En el catálogo", hint: "reutilizable y comparable" },
+            { v: "session", label: "Solo esta vez", hint: "no sale en Pruebas" },
+          ] as const
+        ).map((o) => (
+          <button
+            key={o.v}
+            onClick={() => setDraft((d) => ({ ...d, scope: o.v }))}
+            style={{
+              flex: 1,
+              padding: "8px 10px",
+              borderRadius: 8,
+              fontSize: 12,
+              fontWeight: 600,
+              textAlign: "left",
+              cursor: "pointer",
+              border: `1px solid ${draft.scope === o.v ? "var(--accent)" : "var(--border)"}`,
+              background: draft.scope === o.v ? "var(--accent-dim)" : "transparent",
+              color: draft.scope === o.v ? "var(--accent)" : "var(--text-secondary)",
+            }}
+          >
+            {o.label}
+            <div
+              style={{ fontSize: 10, fontWeight: 500, color: "var(--text-muted)", marginTop: 2 }}
+            >
+              {o.hint}
+            </div>
+          </button>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", gap: 8, marginTop: 16, justifyContent: "flex-end" }}>
+        <button
+          className="btn-ghost"
+          style={{ fontSize: 12 }}
+          onClick={() => {
+            setDraft(emptyExerciseDraft());
+            setOpen(false);
+          }}
+        >
+          Cancelar
+        </button>
+        <button
+          className="btn-accent"
+          style={{ fontSize: 12 }}
+          disabled={!draft.name.trim() || !!busy}
+          onClick={() => {
+            onAdd({ ...draft, name: draft.name.trim(), unit: draft.unit.trim() });
+            setDraft(emptyExerciseDraft());
+            setOpen(false);
+          }}
+        >
+          {addLabel}
+        </button>
+      </div>
+    </div>
   );
 }
 

@@ -6,6 +6,7 @@ import {
   rankPlayers,
   buildEvaluationsCsv,
   categoryOf,
+  sessionLabel,
   type EvalTest,
 } from "../evaluations";
 
@@ -136,5 +137,31 @@ describe("buildEvaluationsCsv", () => {
       "2026-02-01;7;Ana;;4.40;",
       "2026-02-01;;Lucía;Sí;;38",
     ]);
+  });
+});
+
+describe("sessionLabel", () => {
+  const fmt = (d: string) => `[${d}]`;
+
+  it("usa el titulo cuando existe", () => {
+    expect(sessionLabel({ title: "Test inicial", date: "2026-08-17", notes: "" }, fmt)).toBe(
+      "Test inicial · [2026-08-17]",
+    );
+  });
+
+  it("cae en las notas cuando no hay titulo", () => {
+    expect(sessionLabel({ title: "", date: "2026-08-17", notes: "pista cubierta" }, fmt)).toBe(
+      "[2026-08-17] · pista cubierta",
+    );
+  });
+
+  it("solo la fecha cuando no hay titulo ni notas", () => {
+    expect(sessionLabel({ title: "   ", date: "2026-08-17", notes: "  " }, fmt)).toBe(
+      "[2026-08-17]",
+    );
+  });
+
+  it("tolera jornadas antiguas sin campo titulo", () => {
+    expect(sessionLabel({ date: "2026-08-17", notes: "" } as never, fmt)).toBe("[2026-08-17]");
   });
 });

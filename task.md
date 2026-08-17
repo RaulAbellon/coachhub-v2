@@ -736,3 +736,53 @@ le fijó la contraseña a mano en Turso: usuario `cesar` (id 35, `pozolainezce@g
 contraseña **`Cesar-Balonmano-2026`**, hash bcrypt coste 12, `bcrypt.compare` → true. Se
 borraron sus tokens de reset pendientes. Login real contra el dominio publicado → HTTP 200 con
 token. Debe cambiarla desde su perfil.
+
+## Valoraciones: acceso desde la navegación y varios ejercicios por sesión (17/08/2026)
+
+**Petición:** que «Valoraciones» tenga su propio icono en la navegación (sin entrar por el
+equipo) y que una sesión de valoración pueda incluir varios ejercicios distintos, eligiéndolos
+al crearla y pudiendo añadir o quitar después.
+
+**Navegación:**
+- `Sidebar.tsx`: item «Valoraciones» (`PATHS.chart`), activo con `/evaluations` y
+  `…/evaluations`; el match de «Equipos» excluye ahora `/evaluations`.
+- `BottomNav.tsx`: **fuera el FAB `+` central** (las sesiones se crean desde el calendario o
+  desde el equipo) y en su hueco «Valorac.». Cinco items iguales, `fontSize: 9.5`, icono 20.
+- `app.tsx`: ruta `/evaluations` sin `teamId`. La página resuelve el equipo con
+  `routeTeamId ?? último usado (localStorage: coachhub:lastEvaluationsTeamId) ?? primero` y
+  muestra un `<select aria-label="Equipo">` cuando hay más de uno.
+- La vista por defecto de la página pasa de «Pruebas» a «Registrar».
+
+**Varios ejercicios por sesión (esquema):**
+- `evaluation_tests.session_id` (nullable): si viene relleno el ejercicio es **puntual**, solo de
+  esa jornada, y **no** sale en el catálogo (`GET /tests` filtra `isNull(sessionId)`).
+- `evaluation_sessions.title` (notNull, default ""): título tipo «Test inicial pretemporada».
+- Tabla nueva `evaluation_session_tests` (unique `session_id + test_id`): qué ejercicios entran
+  en cada jornada.
+- **Compatibilidad**: si una jornada no tiene enlaces (las creadas antes de este cambio),
+  `testsBySession()` devuelve todo el catálogo activo, como funcionaba hasta ahora. Al quitar un
+  ejercicio de una jornada sin enlaces se materializan primero los del catálogo menos ese.
+
+**API (`routes/evaluations.ts`):** `POST /sessions` acepta `title` y `testIds`; `POST /tests`
+acepta `sessionId` (puntual) o `attachToSession`; `POST /sessions/:id/tests` y
+`DELETE /sessions/:id/tests/:testId`; `GET /sessions` devuelve los `tests` de cada jornada;
+`PUT /values/batch` valida contra los ejercicios **de esa jornada**, no contra todo el catálogo;
+`DELETE /sessions/:id` borra valores → enlaces → ejercicios puntuales → jornada;
+`GET /history` devuelve también `tests` para que el CSV pueda nombrar los puntuales.
+
+**UI:** modal «Nueva evaluación» con título, fecha, notas, checkboxes del catálogo
+(premarcados) y `ExerciseDraftForm` para crear ejercicios en el momento eligiendo si van al
+catálogo o solo a esa sesión. Modal nuevo «Ejercicios de la evaluación» (botón «Ejercicios (n)»
+en la cabecera) para añadir del catálogo, crear uno nuevo o quitar, avisando de que al quitar se
+borran los valores de esa jornada. En móvil, conmutador **Por ejercicio / Por jugador**: el
+primero recorre el equipo con un solo ejercicio (lo natural en pista). La Comparativa sigue
+usando solo el catálogo: los ejercicios puntuales no son comparables entre jornadas.
+
+**Verificado:** `db:push` aplicado a la Turso del usuario; `tsc -b --force` limpio; 89/89 tests
+(4 nuevos de `sessionLabel`); `build` ok. Playwright en escritorio: icono en la barra, entrada
+por `/evaluations` con el último equipo y persistencia tras recargar, alta con título + 1 del
+catálogo + 1 puntual, añadir y quitar ejercicio (los valores del quitado se borran, los del
+resto se conservan), CSV con la columna del ejercicio puntual. En móvil 390×844: barra inferior
+con 5 items sin FAB, cabecera de jornada en una línea, los dos modos de registro guardando.
+Jornada creada sin `testIds` → sigue mostrando el catálogo completo (compatibilidad).
+`scripts/cleanup_test.mjs` ampliado con `evaluation_session_tests` (sin él saltaba la FK).

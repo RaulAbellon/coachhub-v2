@@ -309,6 +309,10 @@ export const evaluationTests = sqliteTable("evaluation_tests", {
   // si es false, un valor MAYOR es mejor (saltos, cargas). Configurable por
   // prueba en vez de deducirlo de la categoría.
   lowerIsBetter: integer("lower_is_better", { mode: "boolean" }).notNull().default(false),
+  // Ejercicio puntual: si tiene sessionId, el ejercicio pertenece SOLO a esa
+  // jornada y no aparece en el catálogo del equipo. Si es null, es del catálogo
+  // y se puede reutilizar en cualquier jornada (mantiene el histórico).
+  sessionId: integer("session_id"),
   sortOrder: integer("sort_order").notNull().default(0),
   deletedAt: integer("deleted_at", { mode: "timestamp" }), // soft-delete: conserva el histórico
   createdAt: integer("created_at", { mode: "timestamp" })
@@ -325,6 +329,7 @@ export const evaluationTests = sqliteTable("evaluation_tests", {
 export const evaluationSessions = sqliteTable("evaluation_sessions", {
   id: integer("id").primaryKey({ autoIncrement: true }),
   teamId: integer("team_id").notNull().references(() => teams.id),
+  title: text("title").notNull().default(""),  // "Test inicial pretemporada"
   date: text("date").notNull(),               // YYYY-MM-DD
   notes: text("notes").notNull().default(""),
   createdAt: integer("created_at", { mode: "timestamp" })
@@ -332,6 +337,22 @@ export const evaluationSessions = sqliteTable("evaluation_sessions", {
     .$defaultFn(() => new Date()),
 }, (t) => ({
   teamIdx: index("evaluation_sessions_team_idx").on(t.teamId),
+}));
+
+// ─── EVALUATION SESSION TESTS (qué ejercicios entran en cada jornada) ────────
+// Una jornada puede incluir varios ejercicios: unos del catálogo del equipo y
+// otros puntuales creados solo para ella.
+export const evaluationSessionTests = sqliteTable("evaluation_session_tests", {
+  id: integer("id").primaryKey({ autoIncrement: true }),
+  sessionId: integer("session_id").notNull().references(() => evaluationSessions.id),
+  testId: integer("test_id").notNull().references(() => evaluationTests.id),
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: integer("created_at", { mode: "timestamp" })
+    .notNull()
+    .$defaultFn(() => new Date()),
+}, (t) => ({
+  sessionTestUnique: uniqueIndex("eval_session_tests_session_test_unique").on(t.sessionId, t.testId),
+  sessionIdx: index("evaluation_session_tests_session_idx").on(t.sessionId),
 }));
 
 // ─── EVALUATION VALUES (valor de un jugador en una prueba, en una sesión) ────

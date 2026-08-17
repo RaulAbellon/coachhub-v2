@@ -7,7 +7,20 @@ import { Icon, PATHS } from "./icons";
 const navItems: { path: string; label: string; icon: string; match: (l: string) => boolean }[] = [
   { path: "/", label: "Dashboard", icon: PATHS.dashboard, match: (l) => l === "/" },
   { path: "/calendar", label: "Calendario", icon: PATHS.calendar, match: (l) => l === "/calendar" },
-  { path: "/teams", label: "Equipos", icon: PATHS.teams, match: (l) => l.startsWith("/teams") },
+  {
+    path: "/evaluations",
+    label: "Valoraciones",
+    icon: PATHS.chart,
+    match: (l) => l === "/evaluations" || l.endsWith("/evaluations"),
+  },
+  {
+    path: "/teams",
+    label: "Equipos",
+    icon: PATHS.teams,
+    // Las valoraciones también viven bajo /teams/:id: si no se excluyen, se
+    // marcarían los dos apartados a la vez.
+    match: (l) => l.startsWith("/teams") && !l.endsWith("/evaluations"),
+  },
   { path: "/profile", label: "Perfil", icon: PATHS.players, match: (l) => l === "/profile" },
 ];
 

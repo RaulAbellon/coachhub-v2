@@ -10,6 +10,8 @@ export type EvalTest = {
   description: string;
   category: string;
   lowerIsBetter: boolean;
+  /** Si tiene valor, el ejercicio es puntual de esa jornada (no del catálogo). */
+  sessionId?: number | null;
   sortOrder: number;
   recordCount?: number;
 };
@@ -17,9 +19,22 @@ export type EvalTest = {
 export type EvalSession = {
   id: number;
   teamId: number;
+  title?: string;
   date: string; // YYYY-MM-DD
   notes: string;
+  /** Ejercicios incluidos en la jornada (los devuelve GET /sessions). */
+  tests?: EvalTest[];
 };
+
+/** Etiqueta de una jornada: título si lo tiene, si no la fecha con las notas. */
+export function sessionLabel(
+  s: Pick<EvalSession, "title" | "date" | "notes">,
+  formatDate: (d: string) => string,
+): string {
+  const title = (s.title ?? "").trim();
+  if (title) return `${title} · ${formatDate(s.date)}`;
+  return s.notes.trim() ? `${formatDate(s.date)} · ${s.notes.trim()}` : formatDate(s.date);
+}
 
 export type EvalValue = {
   id: number;

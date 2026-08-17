@@ -83,6 +83,9 @@ function AppLayout() {
           <Route path="/sessions/:id">
             {(params) => <SessionPage id={params.id} />}
           </Route>
+          {/* Acceso directo desde la barra de navegación: la página resuelve
+              el equipo (el último usado) y ofrece un selector para cambiar. */}
+          <Route path="/evaluations" component={EvaluationsPage} />
           <Route path="/teams" component={TeamsPage} />
           <Route path="/teams/:teamId/players">
             {(params) => <PlayersPage params={params} />}

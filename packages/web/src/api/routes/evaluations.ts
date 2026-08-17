@@ -23,6 +23,69 @@ function isValidDate(v: unknown): v is string {
   return typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(Date.parse(v));
 }
 
+/** Añade un ejercicio a una jornada. Idempotente: si ya estaba, no duplica. */
+async function linkTestToSession(sessionId: number, testId: number) {
+  const existing = await db
+    .select({ testId: schema.evaluationSessionTests.testId })
+    .from(schema.evaluationSessionTests)
+    .where(eq(schema.evaluationSessionTests.sessionId, sessionId));
+  if (existing.some((e) => e.testId === testId)) return;
+  await db
+    .insert(schema.evaluationSessionTests)
+    .values({ sessionId, testId, sortOrder: existing.length })
+    .onConflictDoNothing();
+}
+
+/**
+ * Ejercicios de cada jornada, en orden.
+ *
+ * Compatibilidad: las jornadas creadas antes de esta función no tienen enlaces;
+ * en ese caso se devuelven todas las pruebas activas del catálogo del equipo,
+ * que es exactamente lo que la pantalla mostraba antes.
+ */
+async function testsBySession(teamId: number, sessionIds: number[]) {
+  const result: Record<number, (typeof schema.evaluationTests.$inferSelect)[]> = {};
+  if (sessionIds.length === 0) return result;
+
+  const catalog = await db
+    .select()
+    .from(schema.evaluationTests)
+    .where(
+      and(
+        eq(schema.evaluationTests.teamId, teamId),
+        isNull(schema.evaluationTests.deletedAt),
+        isNull(schema.evaluationTests.sessionId),
+      ),
+    )
+    .orderBy(asc(schema.evaluationTests.sortOrder), asc(schema.evaluationTests.id));
+
+  const links = await db
+    .select()
+    .from(schema.evaluationSessionTests)
+    .where(inArray(schema.evaluationSessionTests.sessionId, sessionIds))
+    .orderBy(asc(schema.evaluationSessionTests.sortOrder), asc(schema.evaluationSessionTests.id));
+
+  const linkedTestIds = [...new Set(links.map((l) => l.testId))];
+  const testsById: Record<number, typeof schema.evaluationTests.$inferSelect> = {};
+  if (linkedTestIds.length > 0) {
+    const linkedTests = await db
+      .select()
+      .from(schema.evaluationTests)
+      .where(inArray(schema.evaluationTests.id, linkedTestIds));
+    for (const t of linkedTests) {
+      if (t.teamId === teamId && !t.deletedAt) testsById[t.id] = t;
+    }
+  }
+
+  const hasLinks = new Set(links.map((l) => l.sessionId));
+  for (const sid of sessionIds) result[sid] = hasLinks.has(sid) ? [] : [...catalog];
+  for (const l of links) {
+    const t = testsById[l.testId];
+    if (t) result[l.sessionId]?.push(t);
+  }
+  return result;
+}
+
 export const evaluations = new Hono()
   // ── TESTS (pruebas físicas configurables por equipo) ───────────────────────
 
@@ -35,6 +98,8 @@ export const evaluations = new Hono()
     const membership = await getMembership(user.userId, teamId);
     if (!membership) return c.json({ error: "Sin acceso" }, 403);
 
+    // Solo el catálogo del equipo: los ejercicios puntuales de una jornada
+    // (sessionId != null) no se listan aquí.
     const active = await db
       .select()
       .from(schema.evaluationTests)
@@ -42,6 +107,7 @@ export const evaluations = new Hono()
         and(
           eq(schema.evaluationTests.teamId, teamId),
           isNull(schema.evaluationTests.deletedAt),
+          isNull(schema.evaluationTests.sessionId),
         ),
       )
       .orderBy(asc(schema.evaluationTests.sortOrder), asc(schema.evaluationTests.id));
@@ -77,6 +143,22 @@ export const evaluations = new Hono()
     const name = String(body.name ?? "").trim();
     if (!name) return c.json({ error: "El nombre de la prueba es obligatorio" }, 400);
 
+    // `sessionId`      → ejercicio puntual, solo de esa jornada.
+    // `attachToSession` → ejercicio de catálogo que además se añade a la jornada.
+    const adhocSessionId = parseInt(String(body.sessionId ?? 0)) || null;
+    const attachSessionId = adhocSessionId ?? (parseInt(String(body.attachToSession ?? 0)) || null);
+    if (attachSessionId) {
+      const [sess] = await db
+        .select()
+        .from(schema.evaluationSessions)
+        .where(eq(schema.evaluationSessions.id, attachSessionId));
+      // La jornada tiene que ser del mismo equipo: si no, se podría colar un
+      // ejercicio en la valoración de otro equipo.
+      if (!sess || sess.teamId !== teamId) {
+        return c.json({ error: "Evaluación no encontrada" }, 404);
+      }
+    }
+
     // sortOrder = último + 1, contando también las borradas para no reciclar posiciones.
     const existing = await db
       .select({ sortOrder: schema.evaluationTests.sortOrder })
@@ -93,9 +175,12 @@ export const evaluations = new Hono()
         description: String(body.description ?? "").trim(),
         category: normalizeCategory(body.category),
         lowerIsBetter: Boolean(body.lowerIsBetter),
+        sessionId: adhocSessionId,
         sortOrder: maxSort + 1,
       })
       .returning();
+
+    if (attachSessionId) await linkTestToSession(attachSessionId, created.id);
 
     return c.json({ test: created });
   })
@@ -178,7 +263,11 @@ export const evaluations = new Hono()
       .where(eq(schema.evaluationSessions.teamId, teamId))
       .orderBy(desc(schema.evaluationSessions.date), desc(schema.evaluationSessions.id));
 
-    return c.json({ sessions });
+    const bySession = await testsBySession(teamId, sessions.map((s) => s.id));
+
+    return c.json({
+      sessions: sessions.map((s) => ({ ...s, tests: bySession[s.id] ?? [] })),
+    });
   })
 
   .post("/sessions", async (c) => {
@@ -197,10 +286,148 @@ export const evaluations = new Hono()
 
     const [created] = await db
       .insert(schema.evaluationSessions)
-      .values({ teamId, date, notes: String(body.notes ?? "").trim() })
+      .values({
+        teamId,
+        title: String(body.title ?? "").trim(),
+        date,
+        notes: String(body.notes ?? "").trim(),
+      })
       .returning();
 
-    return c.json({ session: created });
+    // Ejercicios del catálogo elegidos al crear la jornada. Solo se aceptan los
+    // del propio equipo.
+    const requested = Array.isArray(body.testIds)
+      ? [...new Set(body.testIds.map((v: unknown) => parseInt(String(v)) || 0).filter(Boolean))]
+      : [];
+    if (requested.length > 0) {
+      const owned = await db
+        .select({ id: schema.evaluationTests.id })
+        .from(schema.evaluationTests)
+        .where(
+          and(
+            eq(schema.evaluationTests.teamId, teamId),
+            isNull(schema.evaluationTests.deletedAt),
+            isNull(schema.evaluationTests.sessionId),
+          ),
+        );
+      const validIds = new Set(owned.map((t) => t.id));
+      for (const id of requested as number[]) {
+        if (validIds.has(id)) await linkTestToSession(created.id, id);
+      }
+    }
+
+    const bySession = await testsBySession(teamId, [created.id]);
+    return c.json({ session: { ...created, tests: bySession[created.id] ?? [] } });
+  })
+
+  // ── Ejercicios de una jornada ─────────────────────────────────────────────
+  .post("/sessions/:id/tests", async (c) => {
+    const user = await requireAuth(c);
+    if (!user) return c.json({ error: "No autorizado" }, 401);
+    const sessionId = parseInt(c.req.param("id"));
+    const body = await c.req.json().catch(() => null);
+    if (!body) return c.json({ error: "Cuerpo de la petición no es JSON válido" }, 400);
+
+    const [session] = await db
+      .select()
+      .from(schema.evaluationSessions)
+      .where(eq(schema.evaluationSessions.id, sessionId));
+    if (!session) return c.json({ error: "Evaluación no encontrada" }, 404);
+
+    const membership = await getMembership(user.userId, session.teamId);
+    if (!membership || !canWrite(membership)) return c.json({ error: "Sin permisos" }, 403);
+
+    const testId = parseInt(String(body.testId ?? 0));
+    if (!testId) return c.json({ error: "testId requerido" }, 400);
+
+    const [test] = await db
+      .select()
+      .from(schema.evaluationTests)
+      .where(eq(schema.evaluationTests.id, testId));
+    if (!test || test.deletedAt || test.teamId !== session.teamId) {
+      return c.json({ error: "Prueba no encontrada" }, 404);
+    }
+    // Un ejercicio puntual pertenece a su jornada y no se presta a otras.
+    if (test.sessionId && test.sessionId !== sessionId) {
+      return c.json({ error: "Ese ejercicio es exclusivo de otra evaluación" }, 400);
+    }
+
+    await linkTestToSession(sessionId, testId);
+    return c.json({ ok: true });
+  })
+
+  .delete("/sessions/:id/tests/:testId", async (c) => {
+    const user = await requireAuth(c);
+    if (!user) return c.json({ error: "No autorizado" }, 401);
+    const sessionId = parseInt(c.req.param("id"));
+    const testId = parseInt(c.req.param("testId"));
+
+    const [session] = await db
+      .select()
+      .from(schema.evaluationSessions)
+      .where(eq(schema.evaluationSessions.id, sessionId));
+    if (!session) return c.json({ error: "Evaluación no encontrada" }, 404);
+
+    const membership = await getMembership(user.userId, session.teamId);
+    if (!membership || !canWrite(membership)) return c.json({ error: "Sin permisos" }, 403);
+
+    const [test] = await db
+      .select()
+      .from(schema.evaluationTests)
+      .where(eq(schema.evaluationTests.id, testId));
+    if (!test || test.teamId !== session.teamId) {
+      return c.json({ error: "Prueba no encontrada" }, 404);
+    }
+
+    // Si la jornada aún no tenía enlaces (creada antes de esta función), se
+    // materializan los del catálogo menos el que se quita: si no, quitar uno no
+    // tendría efecto porque se seguirían mostrando todos.
+    const links = await db
+      .select()
+      .from(schema.evaluationSessionTests)
+      .where(eq(schema.evaluationSessionTests.sessionId, sessionId));
+    if (links.length === 0) {
+      const catalog = await db
+        .select({ id: schema.evaluationTests.id })
+        .from(schema.evaluationTests)
+        .where(
+          and(
+            eq(schema.evaluationTests.teamId, session.teamId),
+            isNull(schema.evaluationTests.deletedAt),
+            isNull(schema.evaluationTests.sessionId),
+          ),
+        )
+        .orderBy(asc(schema.evaluationTests.sortOrder), asc(schema.evaluationTests.id));
+      for (const t of catalog) {
+        if (t.id !== testId) await linkTestToSession(sessionId, t.id);
+      }
+    }
+
+    // Quitar el ejercicio borra sus valores EN ESTA jornada (en el resto se
+    // conservan).
+    await db
+      .delete(schema.evaluationValues)
+      .where(
+        and(
+          eq(schema.evaluationValues.sessionId, sessionId),
+          eq(schema.evaluationValues.testId, testId),
+        ),
+      );
+    await db
+      .delete(schema.evaluationSessionTests)
+      .where(
+        and(
+          eq(schema.evaluationSessionTests.sessionId, sessionId),
+          eq(schema.evaluationSessionTests.testId, testId),
+        ),
+      );
+
+    // Un ejercicio puntual no vive fuera de su jornada: se elimina del todo.
+    if (test.sessionId === sessionId) {
+      await db.delete(schema.evaluationTests).where(eq(schema.evaluationTests.id, testId));
+    }
+
+    return c.json({ ok: true });
   })
 
   .put("/sessions/:id", async (c) => {
@@ -222,6 +449,7 @@ export const evaluations = new Hono()
     await db
       .update(schema.evaluationSessions)
       .set({
+        title: body.title === undefined ? existing.title : String(body.title).trim(),
         date: isValidDate(body.date) ? body.date : existing.date,
         notes: body.notes === undefined ? existing.notes : String(body.notes).trim(),
       })
@@ -244,10 +472,17 @@ export const evaluations = new Hono()
     const membership = await getMembership(user.userId, existing.teamId);
     if (!membership || !canWrite(membership)) return c.json({ error: "Sin permisos" }, 403);
 
-    // Los valores primero (FK), después la jornada.
+    // Los valores primero (FK), luego los enlaces de ejercicios, después los
+    // ejercicios puntuales de la jornada y por último la jornada.
     await db
       .delete(schema.evaluationValues)
       .where(eq(schema.evaluationValues.sessionId, sessionId));
+    await db
+      .delete(schema.evaluationSessionTests)
+      .where(eq(schema.evaluationSessionTests.sessionId, sessionId));
+    await db
+      .delete(schema.evaluationTests)
+      .where(eq(schema.evaluationTests.sessionId, sessionId));
     await db
       .delete(schema.evaluationSessions)
       .where(eq(schema.evaluationSessions.id, sessionId));
@@ -274,14 +509,26 @@ export const evaluations = new Hono()
       .where(eq(schema.evaluationSessions.teamId, teamId))
       .orderBy(desc(schema.evaluationSessions.date));
 
-    if (sessions.length === 0) return c.json({ sessions: [], values: [] });
+    if (sessions.length === 0) return c.json({ sessions: [], values: [], tests: [] });
 
     const values = await db
       .select()
       .from(schema.evaluationValues)
       .where(inArray(schema.evaluationValues.sessionId, sessions.map((s) => s.id)));
 
-    return c.json({ sessions, values });
+    // Incluye los ejercicios puntuales para que la exportación pueda nombrarlos.
+    const tests = await db
+      .select()
+      .from(schema.evaluationTests)
+      .where(
+        and(
+          eq(schema.evaluationTests.teamId, teamId),
+          isNull(schema.evaluationTests.deletedAt),
+        ),
+      )
+      .orderBy(asc(schema.evaluationTests.sortOrder), asc(schema.evaluationTests.id));
+
+    return c.json({ sessions, values, tests });
   })
 
   .get("/values", async (c) => {
@@ -387,12 +634,11 @@ export const evaluations = new Hono()
       .select({ id: schema.players.id })
       .from(schema.players)
       .where(eq(schema.players.teamId, session.teamId));
-    const teamTests = await db
-      .select({ id: schema.evaluationTests.id })
-      .from(schema.evaluationTests)
-      .where(eq(schema.evaluationTests.teamId, session.teamId));
+    // Solo los ejercicios que forman parte de ESTA jornada (si no tiene
+    // enlaces, todo el catálogo del equipo, como antes).
+    const sessionTests = (await testsBySession(session.teamId, [sessionId]))[sessionId] ?? [];
     const validPlayers = new Set(teamPlayers.map((p) => p.id));
-    const validTests = new Set(teamTests.map((t) => t.id));
+    const validTests = new Set(sessionTests.map((t) => t.id));
 
     let saved = 0;
     let cleared = 0;

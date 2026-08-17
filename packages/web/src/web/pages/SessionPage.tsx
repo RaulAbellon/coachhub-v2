@@ -5,6 +5,7 @@ import { useLocation } from "wouter";
 import { useAuth } from "../context/AuthContext";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useIsMobile } from "../hooks/useIsMobile";
+import { MOBILE_SCREEN_HEIGHT } from "../lib/layout";
 import { playerWord } from "../lib/gender";
 import { authFetch } from "../lib/authFetch";
 import { ADDITIONAL_COLOR } from "../lib/additional";
@@ -768,7 +769,11 @@ export default function SessionPage({ id }: { id?: string }) {
   ══════════════════════════════════════════ */
   if (isMobile) {
     return (
-      <div className="fade-in" style={{ height: "100vh", display: "flex", flexDirection: "column", overflow: "hidden" }}>
+      // El alto NO puede ser 100vh: <main> ya reserva el hueco de la BottomNav
+      // con su padding inferior, así que un hijo de 100vh se desborda justo esa
+      // cantidad y el cajón inferior queda tapado por la barra fija. Ver
+      // MOBILE_SCREEN_HEIGHT (usa dvh por las barras de Safari en iOS).
+      <div className="fade-in" style={{ height: MOBILE_SCREEN_HEIGHT, display: "flex", flexDirection: "column", overflow: "hidden" }}>
         {infoHeader}
         {pdfTabBar}
         <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden", minHeight: 0 }}>
@@ -855,16 +860,24 @@ function MobileBottomDrawer({
       borderTop: "1px solid var(--border)",
       background: "var(--bg-card)",
       flexShrink: 0,
-      maxHeight: open ? "60vh" : 44,
+      maxHeight: open ? "60dvh" : 54,
       transition: "max-height 0.25s ease",
       overflow: "hidden",
       display: "flex",
       flexDirection: "column",
     }}>
+      {/* Asa: sin ella la barra no se leía como algo desplegable y los usuarios
+          no encontraban asistencia/anotaciones/lesiones en el móvil. */}
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{ display: "flex", justifyContent: "center", paddingTop: 6, flexShrink: 0, cursor: "pointer" }}
+      >
+        <div style={{ width: 36, height: 4, borderRadius: 2, background: "var(--border)" }} />
+      </div>
       <div style={{ display: "flex", alignItems: "center", height: 44, flexShrink: 0 }}>
         {tabs.map(t => (
           <button key={t.key} onClick={() => { setTab(t.key); setOpen(true); }} style={{
-            flex: 1, height: "100%", fontSize: 10, fontWeight: tab === t.key && open ? 700 : 400,
+            flex: 1, height: "100%", fontSize: 11, fontWeight: tab === t.key && open ? 700 : 600,
             background: "none", border: "none", cursor: "pointer",
             color: tab === t.key && open ? (t.key === "injuries" ? "#e05252" : "var(--accent)") : "var(--text-secondary)",
             borderBottom: tab === t.key && open ? `2px solid ${t.key === "injuries" ? "#e05252" : "var(--accent)"}` : "2px solid transparent",

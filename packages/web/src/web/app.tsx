@@ -4,6 +4,7 @@ import { AgentFeedback } from "@runablehq/website-runtime";
 import { Provider } from "./components/provider";
 import { useAuth } from "./context/AuthContext";
 import { useIsMobile } from "./hooks/useIsMobile";
+import { BOTTOM_NAV_SPACE } from "./lib/layout";
 import DashboardPage from "./pages/DashboardPage";
 import CalendarPage from "./pages/CalendarPage";
 import SessionPage from "./pages/SessionPage";
@@ -72,7 +73,7 @@ function AppLayout() {
           display: "flex",
           flexDirection: "column",
           minWidth: 0,
-          paddingBottom: isMobile ? 70 : 0,
+          paddingBottom: isMobile ? BOTTOM_NAV_SPACE : 0,
         }}
       >
         <Switch>

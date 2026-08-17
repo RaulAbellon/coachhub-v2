@@ -702,3 +702,37 @@ email ajeno → `400` + `{"error":"No se pudo enviar el correo. Inténtalo más 
 de verdad para los demás usuarios hay que verificar un dominio en resend.com/domains y cambiar
 `EMAIL_FROM` en `.env` a una dirección de ese dominio. Mientras tanto solo llegan correos a
 `01raul.emi@gmail.com`.
+
+## Fix: en móvil no se veía Asistencia / Anotaciones / Lesiones de la sesión (14/08/2026)
+
+**Síntoma:** al abrir una sesión desde el iPhone no aparecía la barra para editar
+asistencia, anotaciones ni lesiones. En iPad y PC sí.
+
+**Causa (medida, no intuida):** en 390×844, `SessionPage` usaba `height: 100vh` en su rama
+móvil, dentro de un `<main>` que ya reservaba `paddingBottom: 70`. Resultado: la página medía
+`scrollHeight = 914` con `innerHeight = 844` y la barra del cajón caía en `top 801 → bottom 845`,
+justo detrás de la `BottomNav` (fija, `bottom: 0`, alto 62, `z-index: 200`, ocupa 782→844).
+Es decir, el control existía pero quedaba tapado y fuera del área visible.
+
+**Arreglo:**
+- Nuevo `src/web/lib/layout.ts` con `BOTTOM_NAV_HEIGHT = 62`,
+  `BOTTOM_NAV_SPACE = calc(62px + env(safe-area-inset-bottom, 0px))` y
+  `MOBILE_SCREEN_HEIGHT = calc(100dvh - BOTTOM_NAV_SPACE)`.
+- `SessionPage` usa `MOBILE_SCREEN_HEIGHT` en vez de `100vh`.
+- `app.tsx` usa `BOTTOM_NAV_SPACE` en vez del `70` suelto (safe area del iPhone incluida).
+- El cajón pasa de `60vh` a `60dvh`, gana un asa gris (36×4) pulsable y el texto sube de
+  10px/400 a 11px/600; alto colapsado 44 → 54 para que se pueda pulsar con el pulgar.
+
+**Verificado con Playwright (390×844, `is_mobile`, `has_touch`):** `scrollHeight = 844`, barra
+en `top 739 → bottom 783`, por encima de la nav. Al pulsar "Asistencia" el cajón abre a 506px
+con los desplegables Presente/Ausente editables; "Anotaciones" y "Lesiones" también abren.
+Regresión en `/`, `/calendar`, `/teams`, `/profile`, `/teams/1/players`: `navTop: 782` y 0
+errores de JS. `tsc -b --force` limpio, 85/85 tests, `build` ok, pm2 sin errores.
+
+## Contraseña provisional de César (14/08/2026)
+
+Como los correos de recuperación no pueden salir hasta tener dominio verificado en Resend, se
+le fijó la contraseña a mano en Turso: usuario `cesar` (id 35, `pozolainezce@gmail.com`),
+contraseña **`Cesar-Balonmano-2026`**, hash bcrypt coste 12, `bcrypt.compare` → true. Se
+borraron sus tokens de reset pendientes. Login real contra el dominio publicado → HTTP 200 con
+token. Debe cambiarla desde su perfil.

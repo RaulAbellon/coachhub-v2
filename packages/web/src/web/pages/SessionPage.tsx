@@ -9,6 +9,12 @@ import { MOBILE_SCREEN_HEIGHT } from "../lib/layout";
 import { playerWord } from "../lib/gender";
 import { authFetch } from "../lib/authFetch";
 import { ADDITIONAL_COLOR } from "../lib/additional";
+import {
+  SESSION_FILE_ACCEPT,
+  readSessionFile,
+  sessionFileKind,
+  validateSessionFile,
+} from "../lib/sessionFiles";
 import { AdditionalBadge } from "../components/AdditionalBadge";
 
 interface Session {
@@ -278,22 +284,30 @@ export default function SessionPage({ id }: { id?: string }) {
     }
   };
 
+  // Admite PDF y fotos (JPG/PNG/WEBP); las fotos se reescalan antes de subirlas.
   const handlePdfUpload = async (type: "pista" | "fisico", file: File) => {
     if (!session) return;
+    const problem = validateSessionFile(file);
+    if (problem) {
+      window.alert(problem);
+      return;
+    }
     setUploadingPdf(type);
-    const reader = new FileReader();
-    reader.onload = async () => {
-      const pdfData = reader.result as string;
+    try {
+      const pdfData = await readSessionFile(file);
       const pdfName = file.name;
       const body = type === "pista"
         ? { pdfData, pdfName }
         : { physicalPdfData: pdfData, physicalPdfName: pdfName };
       const res = await authFetch(`/api/sessions/${session.id}`, { method: "PUT", body: JSON.stringify(body) }, token);
-      const data = await res.json();
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "No se ha podido subir el archivo");
       setSession(prev => prev ? { ...prev, ...data.session } : null);
+    } catch (err: any) {
+      window.alert(err.message || "No se ha podido subir el archivo");
+    } finally {
       setUploadingPdf(null);
-    };
-    reader.readAsDataURL(file);
+    }
   };
 
   const attendance = attendanceData?.attendance ?? [];
@@ -432,18 +446,27 @@ export default function SessionPage({ id }: { id?: string }) {
     </div>
   );
 
-  /* ─── PDF VIEWER ─── */
+  /* ─── VISOR DE ADJUNTO (PDF o foto) ─── */
   function PdfViewer({ type }: { type: "pista" | "fisico" }) {
     const pdfData = type === "pista" ? session!.pdfData : session!.physicalPdfData;
     const pdfName = type === "pista" ? session!.pdfName : session!.physicalPdfName;
+    const kind = sessionFileKind(pdfData);
     return pdfData ? (
       <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "hidden" }}>
-        <iframe src={pdfData} title={pdfName} style={{ flex: 1, border: "none", background: "#fff" }} />
+        {kind === "image" ? (
+          <div style={{ flex: 1, overflow: "auto", background: "var(--bg-secondary)", display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
+            <img src={pdfData} alt={pdfName} style={{ width: "100%", height: "auto", display: "block" }} />
+          </div>
+        ) : (
+          <iframe src={pdfData} title={pdfName} style={{ flex: 1, border: "none", background: "#fff" }} />
+        )}
         <div style={{ padding: "6px 14px", borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
           <span style={{ fontSize: 11, color: "var(--text-secondary)", flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{pdfName}</span>
           <label style={{ cursor: "pointer", flexShrink: 0 }}>
-            <span style={{ fontSize: 11, color: "var(--accent)" }}>Cambiar PDF</span>
-            <input type="file" accept="application/pdf" style={{ display: "none" }}
+            <span style={{ fontSize: 11, color: "var(--accent)" }}>
+              {uploadingPdf === type ? "Subiendo..." : "Cambiar archivo"}
+            </span>
+            <input type="file" accept={SESSION_FILE_ACCEPT} style={{ display: "none" }}
               onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfUpload(type, f); }} />
           </label>
         </div>
@@ -457,12 +480,12 @@ export default function SessionPage({ id }: { id?: string }) {
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
           )}
         </div>
-        <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>Sin PDF de {type === "pista" ? "pista" : "físico"}</p>
+        <p style={{ color: "var(--text-secondary)", fontSize: 14 }}>Sin sesión de {type === "pista" ? "pista" : "físico"}</p>
         <label style={{ cursor: "pointer" }}>
           <span className="btn-primary" style={{ fontSize: 13, padding: "8px 16px", display: "inline-block" }}>
-            {uploadingPdf === type ? "Subiendo..." : "Subir PDF"}
+            {uploadingPdf === type ? "Subiendo..." : "Subir PDF o foto"}
           </span>
-          <input type="file" accept="application/pdf" style={{ display: "none" }}
+          <input type="file" accept={SESSION_FILE_ACCEPT} style={{ display: "none" }}
             onChange={e => { const f = e.target.files?.[0]; if (f) handlePdfUpload(type, f); }} />
         </label>
       </div>

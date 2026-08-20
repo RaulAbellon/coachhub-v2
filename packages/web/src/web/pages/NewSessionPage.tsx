@@ -1,10 +1,16 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation } from "wouter";
-import { ArrowLeft, Upload, FileText, X } from "lucide-react";
+import { ArrowLeft, Upload, FileText, ImageIcon, X } from "lucide-react";
 import { useAuth } from "../context/AuthContext";
 import { authFetch } from "../lib/authFetch";
 import Topbar from "../components/Topbar";
 import { SESSION_TYPE_OPTIONS } from "../lib/sessionTypes";
+import {
+  SESSION_FILE_ACCEPT,
+  readSessionFile,
+  sessionFileKind,
+  validateSessionFile,
+} from "../lib/sessionFiles";
 
 export default function NewSessionPage() {
   const [, navigate] = useLocation();
@@ -65,15 +71,17 @@ export default function NewSessionPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // Admite PDF y fotos (JPG/PNG/WEBP). Las fotos se reescalan antes de guardar.
   const readPdfFile = (file: File, onDone: (name: string, data: string) => void) => {
-    if (file.type !== "application/pdf") {
-      setError("Solo se admiten archivos PDF");
+    const problem = validateSessionFile(file);
+    if (problem) {
+      setError(problem);
       return;
     }
     setError("");
-    const reader = new FileReader();
-    reader.onload = (ev) => onDone(file.name, ev.target?.result as string);
-    reader.readAsDataURL(file);
+    readSessionFile(file)
+      .then((data) => onDone(file.name, data))
+      .catch(() => setError("No se ha podido leer el archivo"));
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -298,12 +306,16 @@ export default function NewSessionPage() {
         {/* PDF Pista */}
         <div>
           <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>
-            PDF Sesión de Pista
+            Sesión de Pista <span style={{ color: "#4A4A5A", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(PDF o foto)</span>
           </label>
           {pdfData ? (
             <div className="flex items-center justify-between px-4 py-3 rounded-lg" style={{ background: "var(--bg-surface)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <div className="flex items-center gap-3">
-                <FileText size={20} style={{ color: "#22d3ee" }} />
+                {sessionFileKind(pdfData) === "image" ? (
+                  <img src={pdfData} alt={pdfName} style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 6 }} />
+                ) : (
+                  <FileText size={20} style={{ color: "#22d3ee" }} />
+                )}
                 <span className="text-sm truncate max-w-xs">{pdfName}</span>
               </div>
               <button onClick={removePdf} className="transition-opacity hover:opacity-70" style={{ color: "var(--text-secondary)" }}>
@@ -318,24 +330,31 @@ export default function NewSessionPage() {
               className="flex flex-col items-center justify-center gap-3 px-6 py-10 rounded-lg cursor-pointer"
               style={{ background: "var(--bg-surface)", border: "2px dashed rgba(255,255,255,0.06)" }}
             >
-              <Upload size={28} style={{ color: "var(--text-secondary)" }} />
+              <div className="flex items-center gap-3" style={{ color: "var(--text-secondary)" }}>
+                <Upload size={28} />
+                <ImageIcon size={26} />
+              </div>
               <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                Arrastra un PDF aquí o <span style={{ color: "#22d3ee" }}>haz clic para seleccionar</span>
+                Arrastra un PDF o una foto aquí o <span style={{ color: "#22d3ee" }}>haz clic para seleccionar</span>
               </p>
             </div>
           )}
-          <input ref={fileInputRef} type="file" accept="application/pdf" onChange={handleFileSelect} className="hidden" />
+          <input ref={fileInputRef} type="file" accept={SESSION_FILE_ACCEPT} onChange={handleFileSelect} className="hidden" />
         </div>
 
         {/* PDF Físico */}
         <div>
           <label className="block text-xs uppercase tracking-widest mb-2" style={{ color: "var(--text-secondary)" }}>
-            PDF Preparación Física <span style={{ color: "#4A4A5A", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(opcional)</span>
+            Preparación Física <span style={{ color: "#4A4A5A", fontWeight: 400, textTransform: "none", letterSpacing: 0 }}>(PDF o foto, opcional)</span>
           </label>
           {physicalPdfData ? (
             <div className="flex items-center justify-between px-4 py-3 rounded-lg" style={{ background: "var(--bg-surface)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <div className="flex items-center gap-3">
-                <FileText size={20} style={{ color: "#3b82f6" }} />
+                {sessionFileKind(physicalPdfData) === "image" ? (
+                  <img src={physicalPdfData} alt={physicalPdfName} style={{ width: 40, height: 40, objectFit: "cover", borderRadius: 6 }} />
+                ) : (
+                  <FileText size={20} style={{ color: "#3b82f6" }} />
+                )}
                 <span className="text-sm truncate max-w-xs">{physicalPdfName}</span>
               </div>
               <button onClick={removePhysicalPdf} className="transition-opacity hover:opacity-70" style={{ color: "var(--text-secondary)" }}>
@@ -350,13 +369,16 @@ export default function NewSessionPage() {
               className="flex flex-col items-center justify-center gap-3 px-6 py-8 rounded-lg cursor-pointer"
               style={{ background: "var(--bg-surface)", border: "2px dashed rgba(255,255,255,0.06)" }}
             >
-              <Upload size={24} style={{ color: "var(--text-secondary)" }} />
+              <div className="flex items-center gap-3" style={{ color: "var(--text-secondary)" }}>
+                <Upload size={24} />
+                <ImageIcon size={22} />
+              </div>
               <p className="text-sm" style={{ color: "var(--text-secondary)" }}>
-                Arrastra el PDF de físico aquí o <span style={{ color: "#3b82f6" }}>haz clic para seleccionar</span>
+                Arrastra el PDF o la foto de físico aquí o <span style={{ color: "#3b82f6" }}>haz clic para seleccionar</span>
               </p>
             </div>
           )}
-          <input ref={physicalFileInputRef} type="file" accept="application/pdf" onChange={handlePhysicalFileSelect} className="hidden" />
+          <input ref={physicalFileInputRef} type="file" accept={SESSION_FILE_ACCEPT} onChange={handlePhysicalFileSelect} className="hidden" />
         </div>
 
         {/* Guardar */}

@@ -786,3 +786,36 @@ resto se conservan), CSV con la columna del ejercicio puntual. En móvil 390×84
 con 5 items sin FAB, cabecera de jornada en una línea, los dos modos de registro guardando.
 Jornada creada sin `testIds` → sigue mostrando el catálogo completo (compatibilidad).
 `scripts/cleanup_test.mjs` ampliado con `evaluation_session_tests` (sin él saltaba la FK).
+
+## Sesiones: subir foto además de PDF (20/08/2026)
+
+**Petición:** poder adjuntar una foto (pizarra, cuaderno) en vez de un PDF en los apartados
+de sesión de pista y sesión de físico.
+
+**Cómo:** no hay campos nuevos en la base de datos. La foto se guarda en el mismo campo
+`pdfData` / `physicalPdfData` como data URL, y el tipo se deduce del propio prefijo del data
+URL (`data:image/...` vs `data:application/pdf`). Las sesiones antiguas sin prefijo reconocible
+se siguen tratando como PDF.
+
+**`src/web/lib/sessionFiles.ts` (nuevo):** `SESSION_FILE_ACCEPT`, `sessionFileKind()`,
+`sessionFileLabel()`, `isImageFile()`, `isHeicFile()`, `validateSessionFile()`, `scaledSize()`
+y `readSessionFile()`. Las fotos se reescalan en el navegador (canvas) al lado más largo de
+2000px y se recomprimen a JPEG 0.82 antes de guardarlas: una foto de móvil de 5-8MB en base64
+reventaría el límite de 4MB del backend (`MAX_BASE64_FIELD_BYTES`). Se queda el original si el
+reescalado no lo mejora.
+
+**HEIC/HEIF:** se rechaza con un mensaje que explica cómo cambiar el iPhone a «Más compatible»,
+porque ni el navegador ni el canvas lo saben decodificar. Al no incluir HEIC en el `accept`, el
+selector de fotos de iOS suele entregar ya un JPG convertido.
+
+**UI:** `NewSessionPage` acepta PDF y foto en los dos bloques (arrastrar o clic), con miniatura
+del adjunto; etiquetas «Sesión de Pista (PDF o foto)» y «Preparación Física (PDF o foto,
+opcional)». `SessionPage`: el visor pinta `<img>` para fotos y mantiene el `<iframe>` para PDF,
+botón «Subir PDF o foto» / «Cambiar archivo», errores de subida avisados y `uploadingPdf`
+reflejado también al cambiar de archivo.
+
+**Verificado:** `tsc -b --force` limpio; 103/103 tests (14 nuevos de `sessionFiles`); `build`
+ok. Playwright escritorio: `accept` correcto, miniatura en el formulario, sesión guardada con
+`data:image/jpeg`, foto de 4000x3000 (326KB) guardada en 68KB, visor con `<img>` y sin iframe,
+PDF en la pestaña de físico sigue con iframe, 0 errores JS. Móvil 390x844: la foto se ve a
+ancho completo (fondo oscuro, no blanco). `scripts/cleanup_test.mjs` ejecutado.

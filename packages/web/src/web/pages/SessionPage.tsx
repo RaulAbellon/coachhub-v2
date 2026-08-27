@@ -16,6 +16,7 @@ import {
   validateSessionFile,
 } from "../lib/sessionFiles";
 import { AdditionalBadge } from "../components/AdditionalBadge";
+import PdfPages from "../components/PdfPages";
 
 interface Session {
   id: number;
@@ -457,6 +458,11 @@ export default function SessionPage({ id }: { id?: string }) {
           <div style={{ flex: 1, overflow: "auto", background: "var(--bg-secondary)", display: "flex", alignItems: "flex-start", justifyContent: "center" }}>
             <img src={pdfData} alt={pdfName} style={{ width: "100%", height: "auto", display: "block" }} />
           </div>
+        ) : isMobile ? (
+          // En movil el iframe con un PDF solo ensena la primera pagina (Safari lo
+          // trata como previsualizacion estatica y Chrome de Android no tiene visor
+          // embebido), asi que se pintan todas las paginas con pdf.js.
+          <PdfPages dataUrl={pdfData} name={pdfName ?? undefined} />
         ) : (
           <iframe src={pdfData} title={pdfName} style={{ flex: 1, border: "none", background: "#fff" }} />
         )}

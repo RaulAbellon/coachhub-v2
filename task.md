@@ -819,3 +819,37 @@ ok. Playwright escritorio: `accept` correcto, miniatura en el formulario, sesió
 `data:image/jpeg`, foto de 4000x3000 (326KB) guardada en 68KB, visor con `<img>` y sin iframe,
 PDF en la pestaña de físico sigue con iframe, 0 errores JS. Móvil 390x844: la foto se ve a
 ancho completo (fondo oscuro, no blanco). `scripts/cleanup_test.mjs` ejecutado.
+
+## Sesiones: ver todas las páginas del PDF en móvil (27/08/2026)
+
+**Problema:** desde el móvil el visor de PDF de una sesión solo mostraba la primera página, sin
+posibilidad de llegar a las demás.
+
+**Causa:** el visor usaba `<iframe src="data:application/pdf;...">`. En escritorio eso abre el
+visor nativo del navegador (con scroll, zoom, imprimir), pero en móvil no: Safari de iOS trata
+un PDF embebido como una previsualización estática (pinta la primera página y no deja hacer
+scroll dentro del iframe) y Chrome de Android no tiene visor embebido.
+
+**Solución:** en móvil se renderiza el PDF con pdf.js a `<canvas>`, una página por canvas
+apiladas verticalmente, y el scroll lo hace el contenedor normal, que sí funciona con el dedo.
+En escritorio se mantiene el `<iframe>` porque el visor nativo es mejor (zoom, imprimir,
+descargar). La rama de foto (`sessionFileKind() === "image"`) no cambia.
+
+**`src/web/components/PdfPages.tsx` (nuevo):** `loadPdfjs()` importa `pdfjs-dist` con `import()`
+dinámico para que sus ~400KB no entren en el bundle inicial (solo se descargan al abrir una
+sesión con PDF) y fija el worker como asset propio de Vite (`pdf.worker.min.mjs?url`), no desde
+un CDN, para que funcione sin conexión a terceros. Detalles que importan:
+- El `devicePixelRatio` se limita a 2: a 3x (iPhone) un PDF de varias páginas agota la memoria
+  del navegador y Safari mata la pestaña.
+- Cada canvas fija su `aspectRatio` con el viewport de la página antes de pintar, para que el
+  scroll no salte mientras se renderiza.
+- Al cambiar el ancho (girar el móvil) se cancela el `render()` anterior: pdf.js no admite dos
+  renders solapados sobre el mismo canvas. Se sigue el ancho con `ResizeObserver`.
+- Al desmontar se llama a `destroy()` de la tarea de carga para liberar worker y memoria.
+- Badge «N / total» abajo a la derecha de cada página cuando hay más de una, para saber por
+  dónde vas. Si el PDF no se puede abrir, se ofrece enlace de descarga.
+
+**Verificado:** `tsc -b --force` sin errores nuevos; 103/103 tests; `build` ok (el worker se
+emite como asset). Playwright móvil 390x844 con un PDF de 3 páginas: 3 canvas, badges «1 / 3»,
+«2 / 3» y «3 / 3», scroll hasta la última página (scrollHeight 1671 sobre 560 visibles), 0
+errores JS. Escritorio 1440x1000: sigue con `<iframe>` y sin canvas. `cleanup_test.mjs` ejecutado.

@@ -901,3 +901,37 @@ actualizar pdfjs-dist se vuelva a copiar **renombrando a `.js`**.
 
 **Verificado:** `tsc -b --force` sin errores nuevos; 103/103 tests; `build` ok; Playwright móvil
 con PDF de 3 páginas sigue en verde (3 canvas, badges 1/3-3/3, 0 errores JS).
+
+## Sesiones: el PDF seguia sin cargar en el iPhone (module workers) (28/08/2026)
+
+**Sintoma:** tras el arreglo del `.js` el iPhone seguia mostrando «No se pudo abrir el PDF» con el
+mismo motivo «Setting up fake worker failed: "Importing a module script failed."». Con curl se
+comprobó que en producción `/pdf.worker.min.js` responde 200 con `text/javascript;charset=utf-8`,
+o sea que el content-type ya no era el problema.
+
+**Causa real:** leyendo `pdfjs-dist/legacy/build/pdf.mjs` (`PDFWorker#initialize`), pdf.js crea el
+worker **siempre** con `new Worker(url, { type: "module" })`. Los "module workers" **no existen en
+WKWebView**, que es el motor de todos los navegadores del iPhone (Safari y también Chrome). Al
+fallar, pdf.js cae a su «fake worker», que hace un `import()` dinámico del mismo módulo en el hilo
+principal, y falla por lo mismo. Ninguna de las dos vías podía funcionar en iOS.
+
+**Solución:**
+- El worker se genera ahora como **script clásico** (formato IIFE, sin import/export) con esbuild:
+  `cd packages/web && bunx esbuild node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs --bundle
+  --format=iife --minify --target=es2017 --outfile=public/pdf.worker.min.js`.
+  Queda anotado en `PdfPages.tsx` para cuando se actualice pdfjs-dist.
+- `PdfPages` crea el Worker a mano (`new Worker(WORKER_URL)`, **sin** `type: "module"`) y se lo pasa
+  a pdf.js con `new pdfjs.PDFWorker({ port })` → `getDocument({ worker })`. Así se saltan las dos
+  rutas rotas. Si crear el Worker fallara, queda `workerSrc` como respaldo.
+- El Worker se crea **uno por documento** (no uno global) para que abrir la sesión de pista y la de
+  físico a la vez no se pisen, y se termina en la limpieza del efecto después de destruir el
+  documento.
+- Salida de emergencia: si aun así falla, el estado de error muestra un botón grande **«Abrir el
+  PDF»** que genera un blob URL y lo abre en una pestaña nueva (visor nativo de iOS, todas las
+  páginas), además del enlace de descarga y del motivo del error en texto pequeño.
+
+**Verificado:** `tsc -b --force` sin errores nuevos; 103/103 tests; `build` ok;
+`GET /pdf.worker.min.js` responde 200 con `text/javascript`. Playwright móvil 390x844 con PDF de 3
+páginas: 3 canvas, badges 1/3-3/3, 0 errores JS, y scroll hasta la última página. Escritorio sigue
+con `<iframe>`. Ojo: Chromium emulando móvil **no** reproduce el fallo del iPhone (sí soporta module
+workers), la validación final la hace Raúl en su iPhone tras publicar.

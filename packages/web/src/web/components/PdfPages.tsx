@@ -15,18 +15,33 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
  * (son ~400 KB): solo se descarga cuando alguien abre una sesión con PDF.
  */
 
+/**
+ * Ruta del worker. Se sirve como fichero estático propio desde `public/`
+ * (`packages/web/public/pdf.worker.min.mjs`, copiado del paquete pdfjs-dist)
+ * en vez de resolverlo con `?url`: así la URL es siempre la misma en desarrollo,
+ * en la vista previa y en producción, y no depende de cómo Vite empaquete
+ * node_modules ni de un CDN externo.
+ *
+ * Si se actualiza pdfjs-dist hay que volver a copiar el fichero:
+ *   cp packages/web/node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs \
+ *      packages/web/public/pdf.worker.min.mjs
+ */
+const WORKER_URL = "/pdf.worker.min.mjs";
+
 /** Cache del módulo para no re-importar ni reconfigurar el worker en cada visor. */
 let pdfjsPromise: Promise<typeof import("pdfjs-dist")> | null = null;
 
 async function loadPdfjs() {
   if (!pdfjsPromise) {
     pdfjsPromise = (async () => {
-      const pdfjs = await import("pdfjs-dist");
-      // El worker se sirve como asset propio de Vite (?url), no desde un CDN:
-      // así funciona también sin conexión y no depende de terceros.
-      const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
-      pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
-      return pdfjs;
+      // Se usa la compilación "legacy" a propósito: la moderna usa sintaxis y
+      // APIs muy recientes (por ejemplo `Promise.withResolvers`, que Safari solo
+      // trae desde la 17.4), así que en un iPhone o iPad con iOS algo antiguo el
+      // módulo ni siquiera arranca y el PDF se queda sin cargar. La legacy va
+      // transpilada y con polyfills, y funciona en esos navegadores.
+      const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+      pdfjs.GlobalWorkerOptions.workerSrc = WORKER_URL;
+      return pdfjs as unknown as typeof import("pdfjs-dist");
     })();
   }
   return pdfjsPromise;
@@ -204,6 +219,9 @@ export default function PdfPages({ dataUrl, name }: { dataUrl: string; name?: st
           <a href={dataUrl} download={name || "sesion.pdf"} style={{ color: "var(--accent)", fontSize: 12 }}>
             Descargar el archivo
           </a>
+          {/* Se muestra el motivo real: si vuelve a fallar en un movil concreto,
+              con este texto se sabe si es el worker, la memoria o el fichero. */}
+          <div style={{ marginTop: 10, fontSize: 10, color: "var(--text-muted)", wordBreak: "break-word" }}>{error}</div>
         </div>
       ) : !doc || width === 0 ? (
         <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>

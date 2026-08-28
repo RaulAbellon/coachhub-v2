@@ -853,3 +853,31 @@ un CDN, para que funcione sin conexión a terceros. Detalles que importan:
 emite como asset). Playwright móvil 390x844 con un PDF de 3 páginas: 3 canvas, badges «1 / 3»,
 «2 / 3» y «3 / 3», scroll hasta la última página (scrollHeight 1671 sobre 560 visibles), 0
 errores JS. Escritorio 1440x1000: sigue con `<iframe>` y sin canvas. `cleanup_test.mjs` ejecutado.
+
+## Sesiones: arreglar que el PDF no cargaba en móvil (28/08/2026)
+
+**Problema:** tras pasar el visor de móvil a pdf.js, en el móvil de verdad el PDF no cargaba
+(se quedaba en «Cargando PDF…»), aunque en las pruebas con Chromium emulado funcionaba.
+
+**Causa:** dos cosas propias del navegador real, que Chromium de escritorio no reproduce:
+1. Se importaba la compilación **moderna** de `pdfjs-dist` v6, que usa APIs muy recientes como
+   `Promise.withResolvers` (Safari solo la trae desde la 17.4). En un iPhone o iPad con iOS algo
+   más antiguo el módulo ni arranca, así que no había PDF que pintar.
+2. El worker se resolvía con `import("pdfjs-dist/build/pdf.worker.min.mjs?url")`. Eso hace que la
+   URL del worker dependa de cómo Vite empaquete node_modules y cambie entre desarrollo, vista
+   previa y producción; si no resuelve, pdf.js se queda esperando.
+
+**Solución:**
+- Se importa la compilación **legacy** (`pdfjs-dist/legacy/build/pdf.mjs`), transpilada y con
+  polyfills, que sí funciona en Safari antiguo.
+- El worker se sirve como fichero estático propio: `packages/web/public/pdf.worker.min.mjs`
+  (copiado de `node_modules/pdfjs-dist/legacy/build/`), y `workerSrc` apunta a la URL fija
+  `/pdf.worker.min.mjs`. Misma URL en dev, en vista previa y en producción, sin CDN.
+  **Al actualizar pdfjs-dist hay que volver a copiar ese fichero** (queda anotado en el componente).
+- Si aun así falla, el mensaje de error muestra el motivo real debajo del enlace de descarga,
+  para poder distinguir si es el worker, la memoria o el propio fichero.
+
+**Verificado:** `tsc -b --force` sin errores nuevos; 103/103 tests; `build` ok;
+`GET /pdf.worker.min.mjs` responde 200 (1,3 MB). Playwright móvil 390x844 con un PDF de 3
+páginas: 3 canvas, badges «1 / 3», «2 / 3» y «3 / 3», 0 errores JS. Escritorio: sigue con
+`<iframe>`. `cleanup_test.mjs` ejecutado.

@@ -935,3 +935,23 @@ principal, y falla por lo mismo. Ninguna de las dos vías podía funcionar en iO
 páginas: 3 canvas, badges 1/3-3/3, 0 errores JS, y scroll hasta la última página. Escritorio sigue
 con `<iframe>`. Ojo: Chromium emulando móvil **no** reproduce el fallo del iPhone (sí soporta module
 workers), la validación final la hace Raúl en su iPhone tras publicar.
+
+## Sesiones: el visor ya no se queda colgado en «Cargando PDF…» (28/08/2026)
+
+**Sintoma:** en el iPhone el visor se quedaba indefinidamente en «Cargando PDF…». Al pasarle a
+pdf.js un Worker propio por `port`, si ese Worker no arranca **pdf.js no rechaza la promesa nunca**:
+no hay error que mostrar y la pantalla se queda esperando para siempre.
+
+**Solución (en `PdfPages.tsx`):**
+- Se escucha el evento `error` del Worker: si se cae al arrancar, se muestra el motivo real en
+  pantalla en vez de esperar.
+- Temporizador de 15 s: si no hay documento, se pasa al estado de error con «Tiempo de espera
+  agotado» (más el mensaje del worker si lo hubo). Ya nunca se queda colgado.
+- A los 4 s de espera aparece un botón **«Abrir el PDF aparte»** debajo de «Cargando PDF…», para no
+  tener que esperar el timeout: abre el PDF con el visor nativo del sistema (blob URL).
+- Los temporizadores se limpian al cargar el documento, al fallar y al desmontar.
+
+**Nota:** intentar compilar el worker con `--target=safari13` no es viable (esbuild no sabe
+transpilar 676 sitios del código de pdf.js), así que el worker sigue en `--target=es2017`.
+
+**Verificado:** `tsc -b --force` sin errores nuevos; 103/103 tests; `build` ok.

@@ -189,6 +189,7 @@ export default function PdfPages({ dataUrl, name }: { dataUrl: string; name?: st
   const wrapRef = useRef<HTMLDivElement>(null);
   const [doc, setDoc] = useState<PDFDocumentProxy | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [slow, setSlow] = useState(false);
   const [width, setWidth] = useState(0);
 
   // Ancho disponible: se mide del contenedor y se sigue con ResizeObserver para
@@ -209,6 +210,22 @@ export default function PdfPages({ dataUrl, name }: { dataUrl: string; name?: st
     // Se guarda la tarea de carga (no el documento) porque es la que expone
     // destroy(): al desmontar hay que liberar el worker y la memoria del PDF.
     let loadTask: { destroy: () => Promise<void> } | null = null;
+    // Mensaje del propio Worker si se cae al arrancar: es la única pista de por
+    // qué pdf.js se queda colgado en un navegador concreto.
+    let workerError = "";
+    // Temporizadores: uno para ofrecer la salida de emergencia en cuanto la cosa
+    // se hace lenta, y otro para rendirse. Sin esto, si el worker no contesta
+    // (pasaba en el iPhone) la promesa de pdf.js no falla nunca y la pantalla se
+    // queda en «Cargando PDF…» para siempre.
+    const slowTimer = window.setTimeout(() => {
+      if (!cancelled) setSlow(true);
+    }, 4000);
+    const giveUpTimer = window.setTimeout(() => {
+      if (!cancelled)
+        setError(
+          `Tiempo de espera agotado: el worker de pdf.js no contestó${workerError ? ` (${workerError})` : ""}`,
+        );
+    }, 15000);
     // El Worker se crea aquí, uno por documento (y no uno global compartido),
     // para que abrir a la vez la sesión de pista y la de físico no se pisen.
     let port: Worker | null = null;
@@ -223,6 +240,13 @@ export default function PdfPages({ dataUrl, name }: { dataUrl: string; name?: st
         let worker: InstanceType<typeof pdfjs.PDFWorker> | undefined;
         try {
           port = new Worker(WORKER_URL);
+          // Si el worker se cae al arrancar, la promesa de pdf.js no falla: se
+          // queda esperando para siempre. Aquí se recoge el motivo y se corta.
+          port.addEventListener("error", (ev) => {
+            const e = ev as ErrorEvent;
+            workerError = e.message || "el worker no arrancó";
+            if (!cancelled) setError(`El worker de pdf.js falló: ${workerError}`);
+          });
           // Los tipos de pdfjs-dist declaran `port` como null (no contemplan
           // pasarle un Worker propio), pero en tiempo de ejecución es justo lo
           // que espera: ver PDFWorker#initialize en pdf.mjs.
@@ -240,14 +264,20 @@ export default function PdfPages({ dataUrl, name }: { dataUrl: string; name?: st
           void task.destroy();
           return;
         }
+        window.clearTimeout(slowTimer);
+        window.clearTimeout(giveUpTimer);
+        setSlow(false);
         setDoc(loaded);
       } catch (e) {
+        window.clearTimeout(giveUpTimer);
         if (!cancelled) setError(e instanceof Error ? e.message : "No se pudo abrir el PDF");
       }
     })();
 
     return () => {
       cancelled = true;
+      window.clearTimeout(slowTimer);
+      window.clearTimeout(giveUpTimer);
       // Primero el documento y luego el worker: si se mata el Worker antes de
       // que pdf.js cierre el documento, se quedan promesas colgadas.
       void Promise.resolve(loadTask?.destroy()).finally(() => port?.terminate());
@@ -300,6 +330,28 @@ export default function PdfPages({ dataUrl, name }: { dataUrl: string; name?: st
       ) : !doc || width === 0 ? (
         <div style={{ padding: "24px 16px", textAlign: "center", fontSize: 12, color: "var(--text-muted)" }}>
           Cargando PDF…
+          {/* Si tarda, no se deja al usuario mirando el mensaje: se le ofrece ya
+              abrirlo con el visor del sistema sin esperar a que caduque. */}
+          {slow && (
+            <div style={{ marginTop: 16 }}>
+              <button
+                type="button"
+                onClick={() => openInNewTab(dataUrl)}
+                style={{
+                  width: "100%",
+                  padding: "12px 16px",
+                  borderRadius: 12,
+                  border: "1px solid var(--border)",
+                  background: "transparent",
+                  color: "var(--accent)",
+                  fontSize: 15,
+                  fontWeight: 600,
+                }}
+              >
+                Abrir el PDF aparte
+              </button>
+            </div>
+          )}
         </div>
       ) : (
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>

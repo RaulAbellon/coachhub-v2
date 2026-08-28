@@ -881,3 +881,23 @@ errores JS. Escritorio 1440x1000: sigue con `<iframe>` y sin canvas. `cleanup_te
 `GET /pdf.worker.min.mjs` responde 200 (1,3 MB). Playwright móvil 390x844 con un PDF de 3
 páginas: 3 canvas, badges «1 / 3», «2 / 3» y «3 / 3», 0 errores JS. Escritorio: sigue con
 `<iframe>`. `cleanup_test.mjs` ejecutado.
+
+## Sesiones: el PDF no cargaba en el iPhone por el content-type del worker (28/08/2026)
+
+**Síntoma:** en Chrome del iPhone (iOS 17) el visor mostraba «No se pudo abrir el PDF» con el
+motivo «Setting up fake worker failed: "Importing a module script failed."».
+
+**Causa:** el worker estaba en `public/pdf.worker.min.mjs`, y el servidor **no le pone cabecera
+`content-type` a los ficheros `.mjs`** (comprobado con curl en producción: los `.js` de `assets/`
+llegan con `text/javascript;charset=utf-8`, el `.mjs` llega sin cabecera). WebKit —o sea, todos los
+navegadores del iPhone, incluido Chrome— se niega a importar un módulo que no llegue como
+`text/javascript`. Al no poder crear el worker, pdf.js intentaba el «fake worker» (importar el
+mismo fichero en el hilo principal) y fallaba por lo mismo, así que no llegaba a pintar nada.
+
+**Solución:** el fichero se llama ahora `public/pdf.worker.min.js` (misma copia del build legacy de
+pdfjs-dist, solo cambia la extensión) y `WORKER_URL` apunta a `/pdf.worker.min.js`. Con `.js` el
+servidor manda `text/javascript` y el worker arranca. Queda anotado en el componente para que al
+actualizar pdfjs-dist se vuelva a copiar **renombrando a `.js`**.
+
+**Verificado:** `tsc -b --force` sin errores nuevos; 103/103 tests; `build` ok; Playwright móvil
+con PDF de 3 páginas sigue en verde (3 canvas, badges 1/3-3/3, 0 errores JS).

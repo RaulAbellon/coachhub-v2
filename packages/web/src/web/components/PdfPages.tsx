@@ -17,16 +17,22 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
 
 /**
  * Ruta del worker. Se sirve como fichero estático propio desde `public/`
- * (`packages/web/public/pdf.worker.min.mjs`, copiado del paquete pdfjs-dist)
+ * (`packages/web/public/pdf.worker.min.js`, copiado del paquete pdfjs-dist)
  * en vez de resolverlo con `?url`: así la URL es siempre la misma en desarrollo,
  * en la vista previa y en producción, y no depende de cómo Vite empaquete
  * node_modules ni de un CDN externo.
  *
- * Si se actualiza pdfjs-dist hay que volver a copiar el fichero:
+ * IMPORTANTE: la extensión tiene que ser `.js`, no `.mjs`. El servidor no le pone
+ * cabecera `content-type` a los `.mjs`, y WebKit (o sea, cualquier navegador del
+ * iPhone, incluido Chrome) se niega a importar un módulo que no llegue como
+ * `text/javascript`: fallaba con «Importing a module script failed» y el PDF no
+ * se cargaba. Con `.js` el servidor manda `text/javascript` y funciona.
+ *
+ * Si se actualiza pdfjs-dist hay que volver a copiar el fichero (renombrándolo):
  *   cp packages/web/node_modules/pdfjs-dist/legacy/build/pdf.worker.min.mjs \
- *      packages/web/public/pdf.worker.min.mjs
+ *      packages/web/public/pdf.worker.min.js
  */
-const WORKER_URL = "/pdf.worker.min.mjs";
+const WORKER_URL = "/pdf.worker.min.js";
 
 /** Cache del módulo para no re-importar ni reconfigurar el worker en cada visor. */
 let pdfjsPromise: Promise<typeof import("pdfjs-dist")> | null = null;

@@ -955,3 +955,37 @@ no hay error que mostrar y la pantalla se queda esperando para siempre.
 transpilar 676 sitios del código de pdf.js), así que el worker sigue en `--target=es2017`.
 
 **Verificado:** `tsc -b --force` sin errores nuevos; 103/103 tests; `build` ok.
+
+## Sesiones: pdf.js en el hilo principal para que el PDF se vea en el iPhone (28/08/2026)
+
+**Sintoma:** tras pasar a un Worker clasico, en el iPhone de Raúl el visor mostraba «No se pudo abrir
+el PDF aquí dentro — El worker de pdf.js falló: el worker no arrancó». Es decir: en ese WebKit no
+arranca **ningún** Worker, ni clásico ni de módulo. Con eso, las dos rutas que usa pdf.js por defecto
+(module worker y «fake worker» con `import()` dinámico) están cerradas.
+
+**Solución (en `PdfPages.tsx`):**
+- Leyendo `pdf.mjs` (líneas ~22419 y ~22532-22550) se confirma que si existe
+  `globalThis.pdfjsWorker.WorkerMessageHandler`, pdf.js **no crea Worker ni hace `import()`**: usa
+  ese handler y trabaja en el hilo principal. Es la única vía viable en WKWebView.
+- Se genera un segundo bundle del worker que se expone como variable global y se carga con una
+  etiqueta `<script>` normal (`loadMainThreadHandler()`, promesa cacheada, se resetea si falla).
+- El efecto de carga hace dos intentos: primero `openWithWorker()` (Worker clásico + `PDFWorker({
+  port })`, plazo de 6 s y escucha del evento `error`) y, si falla, `openOnMainThread()`, que carga
+  el script y llama a `getDocument({ data })` sin worker. En el segundo intento se regeneran los
+  bytes del PDF, porque pdf.js transfiere el ArrayBuffer al worker y el primero queda vacío.
+- A los 5 s de espera sigue apareciendo el botón «Abrir el PDF aparte», y el estado de error mantiene
+  el motivo real en texto pequeño gris (incluye `(worker: <motivo>)`): es la herramienta de
+  diagnóstico si vuelve a fallar.
+
+**Los dos bundles del worker** (regenerar al actualizar `pdfjs-dist`), desde `packages/web`:
+```
+bunx esbuild node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs --bundle --format=iife \
+  --minify --target=es2017 --outfile=public/pdf.worker.min.js
+bunx esbuild node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs --bundle --format=iife \
+  --global-name=pdfjsWorker --minify --target=es2017 --outfile=public/pdf.worker.main.js
+```
+`--target=safari13` no es viable (esbuild da 676 errores sobre el código de pdf.js).
+
+**Verificado:** `tsc -b --force` sin errores en `PdfPages`; 103/103 tests; `build` ok. Playwright
+móvil con PDF de 3 páginas: 3 canvas, badges 1/3-3/3, 0 errores, y también **abortando el worker a
+propósito** (camino del hilo principal) → 3 canvas y 0 errores. Escritorio sigue con `<iframe>`.

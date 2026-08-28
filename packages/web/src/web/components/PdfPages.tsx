@@ -40,6 +40,53 @@ import type { PDFDocumentProxy } from "pdfjs-dist";
  */
 const WORKER_URL = "/pdf.worker.min.js";
 
+/**
+ * Segunda vía, la que salva al iPhone: el MISMO código de pdf.js empaquetado como
+ * script clásico que se cuelga de `window.pdfjsWorker`. Cargándolo con una
+ * etiqueta <script> normal (nada de módulos, nada de Worker), pdf.js detecta
+ * `globalThis.pdfjsWorker.WorkerMessageHandler` y procesa el PDF **en el hilo
+ * principal**, sin crear ningún Worker (ver `PDFWorker#initialize` en pdf.mjs).
+ *
+ * Hace falta porque en el iPhone de verdad (WKWebView) el Worker no arranca: el
+ * usuario veía «El worker de pdf.js falló: el worker no arrancó». Va algo más
+ * lento (bloquea la interfaz mientras lee el PDF), pero funciona siempre y las
+ * sesiones son PDFs de pocas páginas.
+ *
+ * Al actualizar pdfjs-dist hay que regenerar los DOS ficheros:
+ *   cd packages/web && bunx esbuild node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs \
+ *     --bundle --format=iife --minify --target=es2017 --outfile=public/pdf.worker.min.js
+ *   cd packages/web && bunx esbuild node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs \
+ *     --bundle --format=iife --global-name=pdfjsWorker --minify --target=es2017 \
+ *     --outfile=public/pdf.worker.main.js
+ */
+const MAIN_THREAD_URL = "/pdf.worker.main.js";
+
+/** Cache: el script del hilo principal solo se descarga y evalúa una vez. */
+let mainThreadPromise: Promise<void> | null = null;
+
+function loadMainThreadHandler(): Promise<void> {
+  if (!mainThreadPromise) {
+    mainThreadPromise = new Promise<void>((resolve, reject) => {
+      const g = globalThis as { pdfjsWorker?: { WorkerMessageHandler?: unknown } };
+      if (g.pdfjsWorker?.WorkerMessageHandler) return resolve();
+      const script = document.createElement("script");
+      script.src = MAIN_THREAD_URL;
+      script.async = true;
+      script.onload = () =>
+        g.pdfjsWorker?.WorkerMessageHandler
+          ? resolve()
+          : reject(new Error("el script de pdf.js no expuso WorkerMessageHandler"));
+      script.onerror = () => reject(new Error("no se pudo descargar el script de pdf.js"));
+      document.head.appendChild(script);
+    }).catch((e) => {
+      // Si falla, se permite reintentar en el siguiente PDF.
+      mainThreadPromise = null;
+      throw e;
+    });
+  }
+  return mainThreadPromise;
+}
+
 /** Cache del módulo para no re-importar ni reconfigurar el worker en cada visor. */
 let pdfjsPromise: Promise<typeof import("pdfjs-dist")> | null = null;
 
@@ -210,74 +257,85 @@ export default function PdfPages({ dataUrl, name }: { dataUrl: string; name?: st
     // Se guarda la tarea de carga (no el documento) porque es la que expone
     // destroy(): al desmontar hay que liberar el worker y la memoria del PDF.
     let loadTask: { destroy: () => Promise<void> } | null = null;
-    // Mensaje del propio Worker si se cae al arrancar: es la única pista de por
-    // qué pdf.js se queda colgado en un navegador concreto.
-    let workerError = "";
-    // Temporizadores: uno para ofrecer la salida de emergencia en cuanto la cosa
-    // se hace lenta, y otro para rendirse. Sin esto, si el worker no contesta
-    // (pasaba en el iPhone) la promesa de pdf.js no falla nunca y la pantalla se
-    // queda en «Cargando PDF…» para siempre.
-    const slowTimer = window.setTimeout(() => {
-      if (!cancelled) setSlow(true);
-    }, 4000);
-    const giveUpTimer = window.setTimeout(() => {
-      if (!cancelled)
-        setError(
-          `Tiempo de espera agotado: el worker de pdf.js no contestó${workerError ? ` (${workerError})` : ""}`,
-        );
-    }, 15000);
     // El Worker se crea aquí, uno por documento (y no uno global compartido),
     // para que abrir a la vez la sesión de pista y la de físico no se pisen.
     let port: Worker | null = null;
+    // Aviso al usuario si tarda, para no dejarle mirando «Cargando PDF…».
+    const slowTimer = window.setTimeout(() => {
+      if (!cancelled) setSlow(true);
+    }, 5000);
     setDoc(null);
     setError(null);
 
+    /**
+     * Intento 1: Worker de verdad (rápido, no bloquea la interfaz). Se le pone un
+     * plazo porque en el iPhone el Worker no arranca y pdf.js NO rechaza la
+     * promesa: se queda esperando eternamente. Si falla, limpia lo que haya
+     * creado antes de propagar el error.
+     */
+    const openWithWorker = async (pdfjs: Awaited<ReturnType<typeof loadPdfjs>>) => {
+      const w = new Worker(WORKER_URL);
+      let task: ReturnType<typeof pdfjs.getDocument> | null = null;
+      try {
+        const worker = new pdfjs.PDFWorker({ port: w as unknown as null });
+        const t = pdfjs.getDocument({ data: dataUrlToBytes(dataUrl), worker });
+        task = t;
+        const loaded = await new Promise<PDFDocumentProxy>((resolve, reject) => {
+          const timer = window.setTimeout(() => reject(new Error("el worker no contestó")), 6000);
+          w.addEventListener("error", (ev) =>
+            reject(new Error((ev as ErrorEvent).message || "el worker no arrancó")),
+          );
+          t.promise.then(resolve, reject).finally(() => window.clearTimeout(timer));
+        });
+        return { loaded, task: t, port: w };
+      } catch (e) {
+        void task?.destroy();
+        w.terminate();
+        throw e;
+      }
+    };
+
+    /**
+     * Intento 2 (el que funciona en el iPhone): pdf.js en el hilo principal, sin
+     * Worker ninguno. Hay que volver a generar los bytes: pdf.js transfiere el
+     * buffer al worker en el primer intento y ese se queda vacío.
+     */
+    const openOnMainThread = async (pdfjs: Awaited<ReturnType<typeof loadPdfjs>>) => {
+      await loadMainThreadHandler();
+      const task = pdfjs.getDocument({ data: dataUrlToBytes(dataUrl) });
+      return { loaded: await task.promise, task };
+    };
+
     (async () => {
+      let motivoWorker = "";
       try {
         const pdfjs = await loadPdfjs();
-        // Worker CLÁSICO (sin `type: "module"`): es la única forma de que
-        // funcione en el navegador del iPhone. Ver el comentario de WORKER_URL.
-        let worker: InstanceType<typeof pdfjs.PDFWorker> | undefined;
+        let loaded: PDFDocumentProxy;
         try {
-          port = new Worker(WORKER_URL);
-          // Si el worker se cae al arrancar, la promesa de pdf.js no falla: se
-          // queda esperando para siempre. Aquí se recoge el motivo y se corta.
-          port.addEventListener("error", (ev) => {
-            const e = ev as ErrorEvent;
-            workerError = e.message || "el worker no arrancó";
-            if (!cancelled) setError(`El worker de pdf.js falló: ${workerError}`);
-          });
-          // Los tipos de pdfjs-dist declaran `port` como null (no contemplan
-          // pasarle un Worker propio), pero en tiempo de ejecución es justo lo
-          // que espera: ver PDFWorker#initialize en pdf.mjs.
-          worker = new pdfjs.PDFWorker({ port: port as unknown as null });
-        } catch {
-          // Si el navegador no deja crear el Worker, pdf.js se las arregla solo
-          // con workerSrc (o con su fake worker en el hilo principal).
-          port = null;
-          worker = undefined;
+          const r = await openWithWorker(pdfjs);
+          loadTask = r.task;
+          port = r.port;
+          loaded = r.loaded;
+        } catch (e) {
+          motivoWorker = e instanceof Error ? e.message : "falló el worker";
+          if (cancelled) return;
+          const r = await openOnMainThread(pdfjs);
+          loadTask = r.task;
+          loaded = r.loaded;
         }
-        const task = pdfjs.getDocument({ data: dataUrlToBytes(dataUrl), worker });
-        loadTask = task;
-        const loaded = await task.promise;
-        if (cancelled) {
-          void task.destroy();
-          return;
-        }
+        if (cancelled) return;
         window.clearTimeout(slowTimer);
-        window.clearTimeout(giveUpTimer);
         setSlow(false);
         setDoc(loaded);
       } catch (e) {
-        window.clearTimeout(giveUpTimer);
-        if (!cancelled) setError(e instanceof Error ? e.message : "No se pudo abrir el PDF");
+        const motivo = e instanceof Error ? e.message : "No se pudo abrir el PDF";
+        if (!cancelled) setError(motivoWorker ? `${motivo} (worker: ${motivoWorker})` : motivo);
       }
     })();
 
     return () => {
       cancelled = true;
       window.clearTimeout(slowTimer);
-      window.clearTimeout(giveUpTimer);
       // Primero el documento y luego el worker: si se mata el Worker antes de
       // que pdf.js cierre el documento, se quedan promesas colgadas.
       void Promise.resolve(loadTask?.destroy()).finally(() => port?.terminate());

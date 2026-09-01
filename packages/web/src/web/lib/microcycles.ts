@@ -106,6 +106,19 @@ export function monthMicrocycles(
   });
 }
 
+/**
+ * Claves "YYYY-MM" de los meses que hacen falta para pintar las semanas del mes
+ * `month` (0-11): el anterior, el propio y el siguiente. Las semanas ISO se salen
+ * del mes (p.ej. el lunes 31 de agosto abre la primera semana de septiembre), así
+ * que pedir solo el mes en curso deja fuera esas sesiones.
+ */
+export function monthsAround(year: number, month: number): string[] {
+  return [-1, 0, 1].map((delta) => {
+    const d = new Date(year, month + delta, 1);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+  });
+}
+
 /** Texto de la semana: su MC si lo tiene, si no el rango de fechas. */
 export function weekLabel(week: MicrocycleWeek): string {
   return week.label ?? weekRangeLabel(week.monday);

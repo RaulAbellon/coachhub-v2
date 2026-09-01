@@ -7,7 +7,7 @@ import { useIsMobile } from "../hooks/useIsMobile";
 import McSelector from "./McSelector";
 import { SectionLabel, LinkAction } from "./Panel";
 import { hexToRgba, sessionStyle, MATCH_COLOR } from "../lib/sessionTypes";
-import { monthMicrocycles, findMicrocycleIndex, toISODate, weekLabel } from "../lib/microcycles";
+import { monthMicrocycles, findMicrocycleIndex, monthsAround, toISODate, weekLabel } from "../lib/microcycles";
 
 interface Session {
   id: number;
@@ -59,6 +59,13 @@ function fmtLong(dateStr: string): string {
   return txt.charAt(0).toUpperCase() + txt.slice(1);
 }
 
+/** Une listas de varios meses quitando repetidos por id (los meses se solapan). */
+function dedupeById<T extends { id: number }>(items: T[]): T[] {
+  const map = new Map<number, T>();
+  for (const item of items) map.set(item.id, item);
+  return [...map.values()];
+}
+
 /** Widget de microciclo del Dashboard: 1 microciclo a la vez, grid de 7 días. */
 export default function MicrocycleWidget() {
   const { user, token } = useAuth();
@@ -69,22 +76,39 @@ export default function MicrocycleWidget() {
   const todayStr = toISODate(now);
   const year = now.getFullYear();
   const month = now.getMonth();
-  const monthStr = `${year}-${String(month + 1).padStart(2, "0")}`;
+  // Las semanas del mes se salen del mes: la del 31 de agosto arrastra días de
+  // agosto y la última puede acabar en octubre. Se piden también el mes anterior
+  // y el siguiente para que esas actividades (y sus puntos) no se pierdan.
+  const monthKeys = useMemo(() => monthsAround(year, month), [year, month]);
+  const monthsKey = monthKeys.join(",");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["mc-widget-sessions", monthStr],
+    queryKey: ["mc-widget-sessions", monthsKey],
     queryFn: async () => {
-      const res = await authFetch(`/api/sessions/all-teams?month=${monthStr}`, {}, token);
-      return res.json() as Promise<{ sessions: Session[]; teams: Team[] }>;
+      const parts = await Promise.all(
+        monthKeys.map(async (m) => {
+          const res = await authFetch(`/api/sessions/all-teams?month=${m}`, {}, token);
+          return res.json() as Promise<{ sessions: Session[]; teams: Team[] }>;
+        }),
+      );
+      return {
+        sessions: dedupeById(parts.flatMap((p) => p.sessions ?? [])),
+        teams: dedupeById(parts.flatMap((p) => p.teams ?? [])),
+      };
     },
     enabled: !!user,
   });
 
   const { data: matchesData } = useQuery({
-    queryKey: ["mc-widget-matches", monthStr],
+    queryKey: ["mc-widget-matches", monthsKey],
     queryFn: async () => {
-      const res = await authFetch(`/api/matches/all-teams?month=${monthStr}`, {}, token);
-      return res.json() as Promise<{ matches: Match[] }>;
+      const parts = await Promise.all(
+        monthKeys.map(async (m) => {
+          const res = await authFetch(`/api/matches/all-teams?month=${m}`, {}, token);
+          return res.json() as Promise<{ matches: Match[] }>;
+        }),
+      );
+      return { matches: dedupeById(parts.flatMap((p) => p.matches ?? [])) };
     },
     enabled: !!user,
   });

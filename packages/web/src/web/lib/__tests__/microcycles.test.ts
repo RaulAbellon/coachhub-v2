@@ -6,6 +6,7 @@ import {
   findMicrocycleIndex,
   weekLabel,
   weekRangeLabel,
+  monthsAround,
 } from "../microcycles";
 
 describe("getMonday", () => {
@@ -104,5 +105,15 @@ describe("findMicrocycleIndex", () => {
     const weeks = monthMicrocycles(2026, 7);
     expect(findMicrocycleIndex(weeks, "2026-08-08")).toBe(1);
     expect(findMicrocycleIndex(weeks, "2026-12-01")).toBe(-1);
+  });
+});
+
+describe("monthsAround", () => {
+  it("devuelve el mes anterior, el propio y el siguiente", () => {
+    expect(monthsAround(2026, 8)).toEqual(["2026-08", "2026-09", "2026-10"]);
+  });
+  it("cruza bien el cambio de año", () => {
+    expect(monthsAround(2026, 0)).toEqual(["2025-12", "2026-01", "2026-02"]);
+    expect(monthsAround(2026, 11)).toEqual(["2026-11", "2026-12", "2027-01"]);
   });
 });

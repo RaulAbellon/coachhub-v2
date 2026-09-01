@@ -989,3 +989,23 @@ bunx esbuild node_modules/pdfjs-dist/legacy/build/pdf.worker.mjs --bundle --form
 **Verificado:** `tsc -b --force` sin errores en `PdfPages`; 103/103 tests; `build` ok. Playwright
 móvil con PDF de 3 páginas: 3 canvas, badges 1/3-3/3, 0 errores, y también **abortando el worker a
 propósito** (camino del hilo principal) → 3 canvas y 0 errores. Escritorio sigue con `<iframe>`.
+
+## Dashboard: el lunes 31 de agosto también cuenta en su microciclo (01/09/2026)
+
+**Sintoma:** en el widget de microciclo del Dashboard, la semana del 31 de agosto al 6 de septiembre
+no mostraba la sesión del lunes 31 ni su punto azul, porque esa sesión es del mes anterior.
+
+**Causa:** el widget pedía las actividades de un solo mes
+(`/api/sessions/all-teams?month=2026-09`), pero las semanas ISO se salen del mes: la primera puede
+empezar en el mes anterior y la última terminar en el siguiente.
+
+**Solución:**
+- Nueva función `monthsAround(year, month)` en `lib/microcycles.ts`: devuelve las claves "YYYY-MM"
+  del mes anterior, el propio y el siguiente (cruza bien el cambio de año).
+- `MicrocycleWidget` pide esos tres meses en paralelo (sesiones y partidos) y une los resultados
+  quitando repetidos por id (`dedupeById`). Así el día 31 tiene su punto, entra en el contador de
+  actividades de la semana y su número de MC cuenta para la etiqueta del microciclo.
+
+**Verificado:** `tsc -b --force` sin errores nuevos; 105/105 tests (2 nuevos para `monthsAround`);
+`build` ok. Playwright con sesiones el 31/08, 01/09 y 03/09: la cabecera dice «31 ago – 6 sep · 3
+actividades» y los puntos salen en Lun 31, Mar 1 y Jue 3, sin errores de consola.

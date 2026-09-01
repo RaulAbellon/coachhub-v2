@@ -3,6 +3,7 @@ import { db } from "../database";
 import * as schema from "../database/schema";
 import { eq, inArray } from "drizzle-orm";
 import { requireAuth } from "../lib/auth";
+import { attendancePct, countsForAttendance } from "../lib/attendance";
 
 /**
  * Agregados para la vista Dashboard (rediseño Dashboard Pro).
@@ -75,6 +76,9 @@ export const dashboard = new Hono().get("/", async (c) => {
         .where(inArray(schema.attendance.sessionId, sessionIds))
     : [];
 
+  // El porcentaje mide la asistencia real: solo cuentan las presencias y las
+  // ausencias SIN justificar. Las justificadas y las lesiones no entran ni en el
+  // numerador ni en el denominador (no penalizan a la jugadora).
   const sessionTeam = new Map(allSessions.map((s) => [s.id, s.teamId]));
   const attByTeam = new Map<number, { present: number; total: number }>();
   let globalPresent = 0;
@@ -82,6 +86,7 @@ export const dashboard = new Hono().get("/", async (c) => {
   for (const row of attRows) {
     const teamId = sessionTeam.get(row.sessionId);
     if (teamId == null) continue;
+    if (!countsForAttendance(row.status)) continue;
     const acc = attByTeam.get(teamId) ?? { present: 0, total: 0 };
     acc.total += 1;
     globalTotal += 1;
@@ -91,7 +96,7 @@ export const dashboard = new Hono().get("/", async (c) => {
     }
     attByTeam.set(teamId, acc);
   }
-  const pct = (present: number, total: number) => (total > 0 ? Math.round((present / total) * 100) : null);
+  const pct = attendancePct;
 
   const teamsOut = allTeams
     .map((t) => {

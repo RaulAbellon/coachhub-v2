@@ -6,6 +6,7 @@ import { requireAuth } from "../lib/auth";
 import { assertBase64FieldsWithinLimit, PayloadTooLargeError } from "../lib/validation";
 import { checkImportRateLimit } from "../lib/rate-limit";
 import { getMembership } from "../lib/team";
+import { attendancePct1, countsForAttendance } from "../lib/attendance";
 import {
   coerceValue,
   getCustomValuesMap,
@@ -253,10 +254,14 @@ export const players = new Hono()
     for (const r of attendanceDetail) counts[r.status] = (counts[r.status] ?? 0) + 1;
     const totalRegistradas = attendanceDetail.length;
     const asistidas = counts.present ?? 0;
+    // Solo cuentan presencias y ausencias SIN justificar: las justificadas y las
+    // lesiones no penalizan el porcentaje (ver lib/attendance.ts).
+    const computables = attendanceDetail.filter(r => countsForAttendance(r.status)).length;
     const attendanceSummary = {
       totalRegistradas,       // sesiones con lista pasada en el rango
       asistidas,
-      porcentaje: totalRegistradas > 0 ? Math.round((asistidas / totalRegistradas) * 1000) / 10 : null,
+      computables,            // presentes + ausencias sin justificar (base del %)
+      porcentaje: attendancePct1(asistidas, computables),
       desglose: counts,
     };
 

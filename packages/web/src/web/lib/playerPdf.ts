@@ -27,6 +27,7 @@ export type PlayerSummary = {
     summary: {
       totalRegistradas: number;
       asistidas: number;
+      computables?: number;
       porcentaje: number | null;
       desglose: Record<string, number>;
     };
@@ -214,18 +215,22 @@ export function buildPlayerPdf(summary: PlayerSummary, range?: PdfRange, accentH
     doc.text("No hay sesiones con lista de asistencia pasada en este periodo.", margin, y);
     y += 20;
   } else {
-    // Barra de porcentaje
+    // Barra de porcentaje. La base son las sesiones computables: presencias +
+    // ausencias sin justificar (las justificadas y las lesiones no cuentan).
+    const computables = att.computables ?? att.totalRegistradas;
     const pct = att.porcentaje ?? 0;
     doc.setFont("helvetica", "bold");
     doc.setFontSize(22);
     doc.setTextColor(accent.r, accent.g, accent.b);
-    doc.text(`${pct}%`, margin, y + 6);
+    doc.text(att.porcentaje == null ? "—" : `${pct}%`, margin, y + 6);
 
     doc.setFont("helvetica", "normal");
     doc.setFontSize(10);
     doc.setTextColor(110, 110, 110);
     doc.text(
-      `${att.asistidas} de ${att.totalRegistradas} sesiones con lista pasada`,
+      computables > 0
+        ? `${att.asistidas} de ${computables} sesiones computables · ${att.totalRegistradas} con lista pasada`
+        : `Sin sesiones computables · ${att.totalRegistradas} con lista pasada`,
       margin + 76, y - 2,
     );
 

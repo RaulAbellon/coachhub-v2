@@ -1009,3 +1009,32 @@ empezar en el mes anterior y la última terminar en el siguiente.
 **Verificado:** `tsc -b --force` sin errores nuevos; 105/105 tests (2 nuevos para `monthsAround`);
 `build` ok. Playwright con sesiones el 31/08, 01/09 y 03/09: la cabecera dice «31 ago – 6 sep · 3
 actividades» y los puntos salen en Lun 31, Mar 1 y Jue 3, sin errores de consola.
+
+## Asistencia: el porcentaje solo cuenta las ausencias sin justificar (01/09/2026)
+
+**Decisión (Raúl):** el porcentaje de asistencia debe medir la asistencia real. Las ausencias
+justificadas **y las lesiones** no penalizan: quedan fuera del cálculo, ni suman ni restan.
+
+    % = presentes / (presentes + ausencias sin justificar)
+
+Si no queda ninguna sesión computable (todo justificado o lesión) el porcentaje es `null` y en
+pantalla se muestra un guion (—), no un 100 %.
+
+**Solución:**
+- Nuevo `packages/web/src/api/lib/attendance.ts` con la regla en un solo sitio:
+  `ATTENDANCE_COUNTED`, `countsForAttendance(status)`, `attendancePct` (entero) y
+  `attendancePct1` (un decimal).
+- `routes/dashboard.ts`: el bucle de asistencia salta los estados no computables, así que el
+  porcentaje por equipo y el global usan la misma base.
+- `routes/players.ts` (resumen de jugadora): nuevo campo `computables` en `attendanceSummary` y
+  `porcentaje` calculado sobre él. `totalRegistradas` y `desglose` se mantienen para no perder
+  información (se siguen viendo las justificadas y las lesiones en los chips).
+- `web/lib/playerPdf.ts`: el número grande muestra «—» cuando no hay computables y el texto dice
+  «X de Y sesiones computables · Z con lista pasada».
+- No se toca el contador «presentes/total» de la lista de una sesión (`SessionPage`) ni el
+  porcentaje de convocatorias: son otra cosa.
+
+**Verificado:** `tsc -b --force` sin errores nuevos; 115/115 tests (10 nuevos para
+`lib/attendance.ts`); `build` ok. Playwright con una jugadora y 5 sesiones (2 presente, 1 ausente,
+1 justificada, 1 lesionada): el Dashboard muestra 67 % (2/3) en lugar del 40 % (2/5) de antes; al
+pasar todas a justificada muestra «—», sin errores de consola.
